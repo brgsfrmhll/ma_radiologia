@@ -1623,10 +1623,6 @@ def open_close_logout_modal(open_click, cancel_click):
 
 # -------------------- Start --------------------
 if __name__=="__main__":
-    dash_app.run(
-        host=os.getenv("HOST", "0.0.0.0"),   # <- importante para acesso externo
-        port=int(os.getenv("PORT", "8050")),
-        debug=os.getenv("DEBUG", "False").lower() == "false"
-    )
+    dash_app.run(port=int(os.getenv("PORT", "8050")), debug=False)
 
 
