@@ -1,0 +1,12 @@
+{
+  "users": [
+    {
+      "nome": "Administrador",
+      "email": "admin@local",
+      "senha_hash": "scrypt:32768:8:1$MD4wgE3mOiMCAyLe$d2778b77764d79ceccff6d3f880f0892811f93238c835b0c2b2d43d418000da4ab0869d90dc45733d9e33e8a6f2ee594fe101471f06089dc86550c238b453380",
+      "modalidades_permitidas": "*",
+      "perfil": "admin",
+      "id": 1
+    }
+  ]
+}

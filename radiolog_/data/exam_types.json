@@ -1,0 +1,82 @@
+{
+  "exam_types": [
+    {
+      "id": 1,
+      "modalidade": "RX",
+      "nome": "Tórax PA/L",
+      "codigo": "RX001"
+    },
+    {
+      "id": 2,
+      "modalidade": "RX",
+      "nome": "Coluna Lombar AP/L",
+      "codigo": "RX002"
+    },
+    {
+      "id": 3,
+      "modalidade": "CT",
+      "nome": "Crânio",
+      "codigo": "CT001"
+    },
+    {
+      "id": 4,
+      "modalidade": "CT",
+      "nome": "Abdômen",
+      "codigo": "CT002"
+    },
+    {
+      "id": 5,
+      "modalidade": "CT",
+      "nome": "Tórax",
+      "codigo": "CT003"
+    },
+    {
+      "id": 6,
+      "modalidade": "CT",
+      "nome": "Coluna Lombar",
+      "codigo": "CT004"
+    },
+    {
+      "id": 7,
+      "modalidade": "US",
+      "nome": "Abdômen total",
+      "codigo": "US001"
+    },
+    {
+      "id": 8,
+      "modalidade": "US",
+      "nome": "Pélvico",
+      "codigo": "US002"
+    },
+    {
+      "id": 9,
+      "modalidade": "MR",
+      "nome": "Crânio",
+      "codigo": "MR001"
+    },
+    {
+      "id": 10,
+      "modalidade": "MR",
+      "nome": "Joelho",
+      "codigo": "MR002"
+    },
+    {
+      "id": 11,
+      "modalidade": "MR",
+      "nome": "Coluna Lombo-sacra",
+      "codigo": "MR003"
+    },
+    {
+      "id": 12,
+      "modalidade": "MG",
+      "nome": "Mamografia Bilateral",
+      "codigo": "MG001"
+    },
+    {
+      "id": 13,
+      "modalidade": "NM",
+      "nome": "Cintilografia da Tireoide",
+      "codigo": "NM001"
+    }
+  ]
+}

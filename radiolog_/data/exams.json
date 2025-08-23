@@ -1,0 +1,16 @@
+{
+  "exams": [
+    {
+      "exam_id": "01",
+      "idade": 35,
+      "modalidade": "RX",
+      "exame": "Pelve",
+      "medico": "José",
+      "data_hora": "2025-08-19T10:00:00",
+      "contraste_usado": true,
+      "contraste_qtd": 10.0,
+      "user_email": "admin@local",
+      "id": 1
+    }
+  ]
+}
