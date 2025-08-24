@@ -9,7 +9,7 @@
 # sudo systemctl status portal-radiologico --no-pager -l
 
 # app.py
-import os, json, uuid, ast
+import os, json, uuid, ast, shutil, time
 from datetime import datetime, timezone
 from pathlib import Path
 from functools import wraps
@@ -33,12 +33,12 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 DATA_DIR.mkdir(exist_ok=True, parents=True)
 UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 
-USERS_JSON = DATA_DIR / "users.json"
+USERS_JSON   = DATA_DIR / "users.json"
 DOCTORS_JSON = DATA_DIR / "doctors.json"
-EXAMS_JSON = DATA_DIR / "exams.json"
+EXAMS_JSON   = DATA_DIR / "exams.json"
 CATALOG_JSON = DATA_DIR / "exam_catalog.json"
-THEME_JSON = DATA_DIR / "theme.json"
-AUDIT_JSON = DATA_DIR / "audit_log.json"
+THEME_JSON   = DATA_DIR / "theme.json"
+AUDIT_JSON   = DATA_DIR / "audit_log.json"
 
 def utcnow_iso():
     return datetime.now(timezone.utc).isoformat()
@@ -96,23 +96,74 @@ def seed_if_needed():
 
 seed_if_needed()
 
+# Reparo automático de users.json caso esteja corrompido
+def repair_users_file_if_needed():
+    data = load_json(USERS_JSON, [])
+    ok = isinstance(data, list) and all(isinstance(x, dict) for x in data)
+    if ok:
+        return
+    try:
+        shutil.copy2(USERS_JSON, USERS_JSON.with_suffix(f".json.bak-{int(time.time())}"))
+    except Exception:
+        pass
+    # tentar coerções brandas
+    if isinstance(data, dict):
+        data = [v for v in data.values() if isinstance(v, dict)]
+    if not isinstance(data, list):
+        data = []
+    data = [x for x in data if isinstance(x, dict)]
+    if not data:
+        data = [{"id": 1, "nome": "Administrador", "email": "admin@local", "senha": "admin123", "ativo": True, "role": "admin"}]
+    save_json(USERS_JSON, data)
+
+repair_users_file_if_needed()
+
 # --------------------------------------
 # Helpers de domínio
 # --------------------------------------
 def list_users():
-    return load_json(USERS_JSON, [])
+    data = load_json(USERS_JSON, [])
+    # se vier dict (mapa), vira lista de valores
+    if isinstance(data, dict):
+        data = list(data.values())
+    clean = []
+    if isinstance(data, list):
+        for x in data:
+            if isinstance(x, dict):
+                if "id" in x:
+                    try:
+                        x["id"] = int(x["id"])
+                    except Exception:
+                        pass
+                clean.append(x)
+    return clean
 
 def get_user_by_email(email):
     return next((u for u in list_users() if u.get("email")==email), None)
 
 def current_user():
-    # evita erro quando não há request ativa (ex.: carga do módulo / systemd)
+    # evita erro fora de request (systemd / import)
     if not has_request_context():
         return None
+    users = list_users()
     uid = session.get("user_id")
-    if not uid:
+    if uid is None:
         return None
-    return next((u for u in list_users() if u.get("id")==uid), None)
+    # aceitar id como int/str e também compat por email antigo
+    uid_int = None
+    if isinstance(uid, int):
+        uid_int = uid
+    elif isinstance(uid, str):
+        if uid.isdigit():
+            uid_int = int(uid)
+        else:
+            for u in users:
+                if isinstance(u, dict) and u.get("email") == uid:
+                    return u
+    for u in users:
+        if isinstance(u, dict) and u.get("id") == uid_int:
+            return u
+    return None
 
 def list_doctors():
     return load_json(DOCTORS_JSON, [])
@@ -267,9 +318,9 @@ def login():
     return render_template_string(
         LOGIN_TEMPLATE,
         portal_name = theme.get("portal_name") or "Portal Radiológico",
-        logo_url = theme_logo_url(),
-        theme_url = "https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css",
-        error = error
+        logo_url   = theme_logo_url(),
+        theme_url  = "https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css",
+        error      = error
     )
 
 @server.route("/logout")
@@ -309,11 +360,11 @@ def user_header():
     email = (u.get("email") if u else "")
     return dbc.Navbar(
         dbc.Container([
-            html.Div(),  # sem título aqui, somente user menu à direita
+            html.Div(),  # sem título aqui; só o usuário à direita
             dbc.DropdownMenu(
                 label=f"{name}",
                 children=[
-                    dbc.DropdownMenuItem(email, disabled=True),
+                    dbc.DropdownMenuItem(email or "—", disabled=True),
                     dbc.DropdownMenuItem(divider=True),
                     dbc.DropdownMenuItem("Trocar senha", id="open_pw_modal"),
                     dbc.DropdownMenuItem("Sair", href="/logout", id="logout_btn"),
@@ -401,7 +452,6 @@ def exams_tab():
     ], fluid=True)
 
 def gerencial_tab():
-    # Só demonstrativo simples: lista médicos e catálogo
     docs = list_doctors()
     cat = list_catalog()
     return dbc.Container([
@@ -494,7 +544,6 @@ dash_app.layout = serve_layout
 # --------------------------------------
 # Callbacks
 # --------------------------------------
-# Conteúdo das abas
 @dash_app.callback(Output("tab_content","children"), Input("tabs","active_tab"))
 def render_tab(tab):
     if tab == "cadastro":
@@ -505,7 +554,6 @@ def render_tab(tab):
         return gerencial_tab()
     return html.Div()
 
-# Habilitar/Desabilitar quantidade de contraste
 @dash_app.callback(Output("contraste_qtd","disabled"), Input("contraste_usado","value"))
 def toggle_qtd(ck):
     return not (ck and "yes" in ck)
@@ -514,7 +562,6 @@ def toggle_qtd(ck):
 def toggle_qtd_edit(ck):
     return not (ck and "yes" in ck)
 
-# Popular exames conforme modalidade
 @dash_app.callback(Output("exame_auto","data"), Input("modalidade","value"))
 def load_exames_por_modalidade(modalidade):
     cat = list_catalog()
@@ -535,14 +582,14 @@ def load_exames_edit(modalidade):
         return sorted(list(set(todos)))
     return cat.get(modalidade, [])
 
-# >>> Popular médicos (cadastro) quando abre a aba
+# Popular médicos (cadastro) quando abre a aba
 @dash_app.callback(Output("medico_auto","data"), Input("tabs","active_tab"))
 def load_medicos_para_cadastro(tab):
     if tab != "cadastro":
         raise dash.exceptions.PreventUpdate
     return [d.get("nome") for d in list_doctors()]
 
-# >>> Popular médicos (edição) quando abre o modal
+# Popular médicos (edição) quando abre o modal
 @dash_app.callback(Output("edit_medico_auto","data"), Input("edit_modal","is_open"))
 def load_medicos_para_edicao(opened):
     if not opened:
@@ -598,7 +645,6 @@ def salvar_exame(n, exam_id, idade, modalidade, exame_txt, medico, data_dt, ck, 
 def excluir_exame(n_clicks):
     from dash import callback_context as ctx
     if not ctx.triggered: raise dash.exceptions.PreventUpdate
-    # identifica qual botão
     btn = ctx.triggered[0]["prop_id"].split(".")[0]
     try:
         btn_id = ast.literal_eval(btn)
@@ -648,8 +694,10 @@ def open_edit_modal(edit_clicks, cancel_click, is_open):
     if not e: raise dash.exceptions.PreventUpdate
     e_dt_value = None
     try:
-        dt = datetime.fromisoformat(e.get("data_hora")); e_dt_value = dt.replace(microsecond=0).isoformat()
-    except: pass
+        dt = datetime.fromisoformat(e.get("data_hora"))
+        e_dt_value = dt.replace(microsecond=0).isoformat()
+    except Exception:
+        pass
     ck = ["yes"] if e.get("contraste_usado") else []
     return True, exam_id, e.get("exam_id"), e.get("modalidade"), e.get("exame"), e_dt_value, e.get("medico"), e.get("idade"), ck, e.get("contraste_qtd")
 
@@ -719,32 +767,40 @@ def add_medico(n, nome):
     return dbc.Alert("Médico adicionado!", color="success", duration=2500), [html.Li(d.get("nome")) for d in docs]
 
 # Abrir/fechar modal trocar senha
-@dash_app.callback(Output("pw_modal","is_open", allow_duplicate=True), Input("open_pw_modal","n_clicks"), State("pw_modal","is_open"), prevent_initial_call=True)
+@dash_app.callback(Output("pw_modal","is_open", allow_duplicate=True),
+                   Input("open_pw_modal","n_clicks"),
+                   State("pw_modal","is_open"),
+                   prevent_initial_call=True)
 def open_pw(n, is_open):
     return not is_open
 
-@dash_app.callback(Output("pw_modal","is_open", allow_duplicate=True), Output("pw_feedback","children"),
-                  Input("pw_save","n_clicks"), Input("pw_close","n_clicks"),
-                  State("pw_atual","value"), State("pw_nova","value"), State("pw_nova2","value"),
-                  prevent_initial_call=True)
+@dash_app.callback(
+    Output("pw_modal","is_open", allow_duplicate=True),
+    Output("pw_feedback","children"),
+    Input("pw_save","n_clicks"),
+    Input("pw_close","n_clicks"),
+    State("pw_atual","value"),
+    State("pw_nova","value"),
+    State("pw_nova2","value"),
+    prevent_initial_call=True
+)
 def do_change_pw(ns, nc, atual, nova, nova2):
     from dash import callback_context as ctx
-    if not ctx.triggered: raise dash.exceptions.PreventUpdate
+    if not ctx.triggered:
+        raise dash.exceptions.PreventUpdate
     trig = ctx.triggered[0]["prop_id"]
-    if trig=="pm_close.n_clicks":  # typo safeguard
-        return False, ""
-    if trig=="pw_close.n_clicks":
+    if trig == "pw_close.n_clicks":
         return False, ""
     u = current_user()
     if not u:
         return True, dmc.Alert("Sessão expirada.", color="red")
-    if (u.get("senha")!= (atual or "")):
+    if (u.get("senha") != (atual or "")):
         return True, dmc.Alert("Senha atual incorreta.", color="red")
-    if not nova or nova!=nova2:
+    if not nova or nova != nova2:
         return True, dmc.Alert("Confirmação não confere.", color="red")
     users = list_users()
     for x in users:
-        if x["id"]==u["id"]:
+        if isinstance(x, dict) and x.get("id")==u["id"]:
             x["senha"]=nova
             break
     save_json(USERS_JSON, users)
