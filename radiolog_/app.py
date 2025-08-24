@@ -14,7 +14,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from functools import wraps
 
-from flask import Flask, request, session, redirect, url_for, send_from_directory, jsonify, render_template_string
+from flask import (
+    Flask, request, session, redirect, url_for,
+    send_from_directory, jsonify, render_template_string, has_request_context
+)
 
 import dash
 from dash import html, dcc, Input, Output, State, ALL, no_update
@@ -103,6 +106,9 @@ def get_user_by_email(email):
     return next((u for u in list_users() if u.get("email")==email), None)
 
 def current_user():
+    # evita erro quando não há request ativa (ex.: carga do módulo / systemd)
+    if not has_request_context():
+        return None
     uid = session.get("user_id")
     if not uid:
         return None
@@ -209,7 +215,6 @@ def theme_logo_url():
     theme = theme_get()
     lp = theme.get("logo_path")
     if lp:
-        # se já está com prefixo uploads/...
         if lp.startswith("uploads/"):
             return f"/{lp}"
         return f"/uploads/{lp}"
@@ -304,8 +309,7 @@ def user_header():
     email = (u.get("email") if u else "")
     return dbc.Navbar(
         dbc.Container([
-            # só indicação do usuário à direita + menu
-            html.Div(),
+            html.Div(),  # sem título aqui, somente user menu à direita
             dbc.DropdownMenu(
                 label=f"{name}",
                 children=[
@@ -469,19 +473,23 @@ pw_modal = dbc.Modal([
     ])
 ], id="pw_modal", is_open=False, backdrop="static")
 
-dash_app.layout = dbc.Container([
-    dcc.Location(id="url"),
-    user_header(),
-    html.Div(id="gate", className="d-none"),  # placeholder para auth messages
-    dbc.Tabs(id="tabs", active_tab="cadastro", children=[
-        dbc.Tab(label="Cadastro", tab_id="cadastro", tab_class_name="fw-semibold"),
-        dbc.Tab(label="Exames", tab_id="exames", tab_class_name="fw-semibold"),
-        dbc.Tab(label="Gerencial", tab_id="gerencial", tab_class_name="fw-semibold"),
-    ], className="mt-3"),
-    html.Div(id="tab_content", className="mt-3"),
-    edit_modal,
-    pw_modal
-], fluid=True, className="py-2")
+# --------- Layout como função (evita acesso à session fora de request)
+def serve_layout():
+    return dbc.Container([
+        dcc.Location(id="url"),
+        user_header(),
+        html.Div(id="gate", className="d-none"),
+        dbc.Tabs(id="tabs", active_tab="cadastro", children=[
+            dbc.Tab(label="Cadastro", tab_id="cadastro", tab_class_name="fw-semibold"),
+            dbc.Tab(label="Exames", tab_id="exames", tab_class_name="fw-semibold"),
+            dbc.Tab(label="Gerencial", tab_id="gerencial", tab_class_name="fw-semibold"),
+        ], className="mt-3"),
+        html.Div(id="tab_content", className="mt-3"),
+        edit_modal,
+        pw_modal
+    ], fluid=True, className="py-2")
+
+dash_app.layout = serve_layout
 
 # --------------------------------------
 # Callbacks
@@ -511,7 +519,6 @@ def toggle_qtd_edit(ck):
 def load_exames_por_modalidade(modalidade):
     cat = list_catalog()
     if not modalidade:
-        # todas opções
         todos = []
         for k, v in cat.items():
             todos += v
@@ -724,6 +731,8 @@ def do_change_pw(ns, nc, atual, nova, nova2):
     from dash import callback_context as ctx
     if not ctx.triggered: raise dash.exceptions.PreventUpdate
     trig = ctx.triggered[0]["prop_id"]
+    if trig=="pm_close.n_clicks":  # typo safeguard
+        return False, ""
     if trig=="pw_close.n_clicks":
         return False, ""
     u = current_user()
@@ -745,9 +754,6 @@ def do_change_pw(ns, nc, atual, nova, nova2):
 # --------------------------------------
 # Start
 # --------------------------------------
-# Importante para produção via systemd ou python app.py
-# (Dash já está montado em /app/)
-# -------------------- Start --------------------
 if __name__=="__main__":
     dash_app.run(
         host=os.getenv("HOST", "0.0.0.0"),
