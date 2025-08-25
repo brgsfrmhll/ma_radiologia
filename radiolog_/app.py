@@ -47,9 +47,12 @@ EXAMTYPES_FILE = os.getenv("EXAMTYPES_FILE", os.path.join(DATA_DIR, "exam_types.
 LOGS_FILE = os.getenv("LOGS_FILE", os.path.join(DATA_DIR, "logs.json"))
 SETTINGS_FILE = os.getenv("SETTINGS_FILE", os.path.join(DATA_DIR, "settings.json"))
 
+## MODIFICAÇÃO: Novo arquivo para Materiais e Contrastes
+MATERIALS_FILE = os.getenv("MATERIALS_FILE", os.path.join(DATA_DIR, "materials.json"))
+
 # Locks para acesso seguro aos arquivos JSON em ambiente multi-threaded
-_users_lock, _exams_lock, _doctors_lock, _examtypes_lock, _logs_lock, _settings_lock = (
-    threading.Lock(), threading.Lock(), threading.Lock(), threading.Lock(), threading.Lock(), threading.Lock()
+_users_lock, _exams_lock, _doctors_lock, _examtypes_lock, _logs_lock, _settings_lock, _materials_lock = (
+    threading.Lock(), threading.Lock(), threading.Lock(), threading.Lock(), threading.Lock(), threading.Lock(), threading.Lock() # MODIFICAÇÃO: Adicionado _materials_lock
 )
 
 # Mapeamento de temas (Bootswatch) -> CDN CSS
@@ -71,6 +74,9 @@ DEFAULT_SETTINGS = {
 MODALIDADES = ["RX","CT","US","MR","MG","NM"]
 MOD_LABEL = {"RX":"Raio-X", "CT":"Tomografia", "US":"Ultrassom", "MR":"Ressonância", "MG":"Mamografia", "NM":"Medicina Nuclear"}
 def mod_label(m): return MOD_LABEL.get(m, m or "")
+
+## MODIFICAÇÃO: Novos tipos de materiais para cadastro
+MATERIAL_TYPES = ["Material", "Contraste"]
 
 # -------------------- Helpers para manipulação de JSON --------------------
 def ensure_dirs():
@@ -141,7 +147,7 @@ def init_files():
             {"id":5, "modalidade":"CT", "nome":"Tórax", "codigo":"CT003"},
             {"id":6, "modalidade":"CT", "nome":"Coluna Lombar", "codigo":"CT004"},
             {"id":7, "modalidade":"US", "nome":"Abdômen total", "codigo":"US001"},
-            {"id":8, "modalidade":"US", "nome":"Pélvico", "codigo":"US002"},
+            {"id":8, "nome":"Pélvico", "codigo":"US002"},
             {"id":9,  "modalidade":"MR", "nome":"Crânio", "codigo":"MR001"},
             {"id":10, "modalidade":"MR", "nome":"Joelho", "codigo":"MR002"},
             {"id":11, "modalidade":"MR", "nome":"Coluna Lombo-sacra", "codigo":"MR003"},
@@ -154,19 +160,20 @@ def init_files():
     ex = read_json(EXAMS_FILE, {"exams":[]})
     if not ex["exams"]:
         now = datetime.utcnow()
+        ## MODIFICAÇÃO: Atualizado seed_exams para usar nova estrutura de materiais
         seed_exams = [
             {"id":1,"exam_id":"E-0001","idade":45,"modalidade":"CT","exame":f"{mod_label('CT')} - Crânio","medico":"Dr. João Silva",
-             "data_hora":(now - timedelta(days=3, hours=2)).isoformat(),"contraste_usado":False,"contraste_qtd":0.0,"user_email":"admin@local"},
+             "data_hora":(now - timedelta(days=3, hours=2)).isoformat(),"user_email":"admin@local", "materiais_usados":[{"material_id":1,"quantidade":80.0}]}, # Contraste
             {"id":2,"exam_id":"E-0002","idade":61,"modalidade":"CT","exame":f"{mod_label('CT')} - Abdômen","medico":"Dra. Maria Souza",
-             "data_hora":(now - timedelta(days=2, hours=4)).isoformat(),"contraste_usado":True,"contraste_qtd":80.0,"user_email":"admin@local"},
+             "data_hora":(now - timedelta(days=2, hours=4)).isoformat(),"user_email":"admin@local", "materiais_usados":[{"material_id":1,"quantidade":60.0}]}, # Contraste
             {"id":3,"exam_id":"E-0003","idade":34,"modalidade":"RX","exame":f"{mod_label('RX')} - Tórax PA/L","medico":"Dr. João Silva",
-             "data_hora":(now - timedelta(days=2)).isoformat(),"contraste_usado":False,"contraste_qtd":0.0,"user_email":"admin@local"},
+             "data_hora":(now - timedelta(days=2)).isoformat(),"user_email":"admin@local", "materiais_usados":[]},
             {"id":4,"exam_id":"E-0004","idade":28,"modalidade":"US","exame":f"{mod_label('US')} - Abdômen total","medico":"Dra. Carla Mendes",
-             "data_hora":(now - timedelta(days=1, hours=6)).isoformat(),"contraste_usado":False,"contraste_qtd":0.0,"user_email":"admin@local"},
+             "data_hora":(now - timedelta(days=1, hours=6)).isoformat(),"user_email":"admin@local", "materiais_usados":[{"material_id":2,"quantidade":2.0}]}, # Luva
             {"id":5,"exam_id":"E-0005","idade":52,"modalidade":"MR","exame":f"{mod_label('MR')} - Joelho","medico":"Dr. Paulo Nogueira",
-             "data_hora":(now - timedelta(hours=20)).isoformat(),"contraste_usado":True,"contraste_qtd":15.0,"user_email":"admin@local"},
+             "data_hora":(now - timedelta(hours=20)).isoformat(),"user_email":"admin@local", "materiais_usados":[{"material_id":1,"quantidade":15.0}, {"material_id":2,"quantidade":1.0}]}, # Contraste + Luva
             {"id":6,"exam_id":"E-0006","idade":40,"modalidade":"CT","exame":f"{mod_label('CT')} - Tórax","medico":"Dra. Maria Souza",
-             "data_hora":(now - timedelta(hours=5)).isoformat(),"contraste_usado":True,"contraste_qtd":60.0,"user_email":"admin@local"},
+             "data_hora":(now - timedelta(hours=5)).isoformat(),"user_email":"admin@local", "materiais_usados":[{"material_id":1,"quantidade":75.0}]}, # Contraste
         ]
         write_json(EXAMS_FILE, {"exams": seed_exams}, _exams_lock)
 
@@ -183,6 +190,17 @@ def init_files():
     # Settings
     if not os.path.exists(SETTINGS_FILE):
         write_json(SETTINGS_FILE, DEFAULT_SETTINGS.copy(), _settings_lock)
+    
+    ## MODIFICAÇÃO: Inicializa arquivo de materiais
+    mats = read_json(MATERIALS_FILE, {"materials":[]})
+    if not mats["materials"]:
+        seed_materials = [
+            {"id":1, "nome":"Gadolinio", "tipo":"Contraste", "unidade":"mL", "valor_unitario":1.50},
+            {"id":2, "nome":"Luva Estéril", "tipo":"Material", "unidade":"par", "valor_unitario":2.00},
+            {"id":3, "nome":"Seringa 10ml", "tipo":"Material", "unidade":"unidade", "valor_unitario":0.75},
+        ]
+        write_json(MATERIALS_FILE, {"materials": seed_materials}, _materials_lock)
+
 
 init_files() # Chamada de inicialização dos arquivos
 
@@ -234,7 +252,6 @@ def doctor_labels_for_autocomplete():
     docs = sorted(list_doctors(), key=lambda x: (x.get("nome") or "").lower())
     return [{"value": d.get("nome"), "label": d.get("nome")} for d in docs if d.get("nome")]
 
-
 # Repo: Catálogo de tipos de exame
 def list_exam_types(): return read_json(EXAMTYPES_FILE, {"exam_types":[]})["exam_types"]
 def save_exam_types(tps): write_json(EXAMTYPES_FILE, {"exam_types":tps}, _examtypes_lock)
@@ -259,6 +276,31 @@ def examtype_labels_for(mod=None):
     if mod: tps = [t for t in tps if t.get("modalidade")==mod]
     return [f"{mod_label(t.get('modalidade'))} - {t.get('nome')}" if t.get("modalidade") else (t.get("nome") or "")
             for t in sorted(tps, key=lambda x: ((x.get("modalidade") or "") + " " + (x.get("nome") or "")).lower())]
+
+## MODIFICAÇÃO: Novo Repositório para Materiais
+def list_materials(): return read_json(MATERIALS_FILE, {"materials":[]})["materials"]
+def save_materials(mats): write_json(MATERIALS_FILE, {"materials":mats}, _materials_lock)
+def add_material(rec):
+    mats = list_materials(); nxt = max([m.get("id",0) for m in mats] or [0]) + 1
+    rec["id"] = nxt; mats.append(rec); save_materials(mats); return nxt
+def update_material(mid, fields):
+    mats = list_materials(); ch=False
+    for m in mats:
+        if m.get("id")==mid: m.update(fields); ch=True; break
+    if ch: save_materials(mats)
+    return ch
+def delete_material(mid):
+    mats = list_materials(); b=len(mats)
+    mats = [m for m in mats if m.get("id")!=mid]
+    if len(mats)!=b: save_materials(mats); return True
+    return False
+
+def material_labels_for_autocomplete():
+    """Retorna uma lista de rótulos de materiais para Autocomplete."""
+    mats = sorted(list_materials(), key=lambda x: (x.get("nome") or "").lower())
+    ## CORREÇÃO: Converte o ID para string para o campo 'value' do Autocomplete
+    return [{"value": str(m.get("id")), "label": f"{m.get('nome')} ({m.get('unidade')})"} for m in mats if m.get("nome")]
+
 
 # Repo: Exames
 def list_exams(): return read_json(EXAMS_FILE, {"exams":[]})["exams"]
@@ -290,7 +332,7 @@ def log_action(user_email, action, entity, entity_id, before=None, after=None):
         "ts": datetime.utcnow().isoformat(),
         "user": user_email or "desconhecido",
         "action": action,  # create|update|delete
-        "entity": entity,  # exam|doctor|user|exam_type|settings
+        "entity": entity,  # exam|doctor|user|exam_type|settings|material # MODIFICAÇÃO: Adicionado 'material'
         "entity_id": entity_id,
         "before": before,
         "after": after
@@ -334,6 +376,16 @@ def validate_positive_int(value, field_name, min_val=0, max_val=None):
         return True, val
     except (ValueError, TypeError):
         return False, f"{field_name} deve ser um número inteiro válido."
+
+## MODIFICAÇÃO: Nova função de validação para números decimais (para valor de material/contraste)
+def validate_positive_float(value, field_name, min_val=0.0):
+    """Valida se um valor é um número decimal positivo."""
+    try:
+        val = float(value)
+        if val < min_val: return False, f"{field_name} deve ser no mínimo {min_val}."
+        return True, val
+    except (ValueError, TypeError):
+        return False, f"{field_name} deve ser um número decimal válido."
 
 def validate_text_input(value, field_name, allow_empty=False, strip=True):
     """Valida se um texto não é vazio ou apenas espaços."""
@@ -416,7 +468,7 @@ LOGIN_TEMPLATE = """
 html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial}
 .wrap{display:flex;align-items:center;justify-content:center;height:100%;background:#f6f7fb}
 .card{background:#fff;padding:32px;border-radius:16px;width:360px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
-.brand{display:flex;align-items:center;gap:10px;margin-bottom:12px; justify-content: center;} /* Centraliza o conteúdo da brand */
+.brand{display:flex;align-items:center;justify-content: center;gap:10px;margin-bottom:12px;} /* Centraliza o conteúdo da brand */
 .brand img{height:{{ logo_height_px }}px;width:auto;display:block;} /* ## MODIFICAÇÃO: Altura dinâmica para o logo */
 h1{font-size:20px;margin:0 0 6px}
 label{display:block;margin-top:12px;font-size:14px}
@@ -477,9 +529,13 @@ def export_csv():
     start_str, end_str = request.args.get("start"), request.args.get("end")
     df = pd.DataFrame(list_exams())
     
+    ## MODIFICAÇÃO: Recupera materiais para mesclar com exames
+    materials_df = pd.DataFrame(list_materials())
+    
     # Define colunas padrão se o DataFrame estiver vazio
     if df.empty:
-        df = pd.DataFrame(columns=["id","exam_id","idade","modalidade","exame","medico","data_hora","contraste_usado","contraste_qtd","user_email"])
+        # MODIFICAÇÃO: Atualiza colunas para refletir a nova estrutura
+        df = pd.DataFrame(columns=["id","exam_id","idade","modalidade","exame","medico","data_hora","user_email", "materiais_usados"])
     
     if not df.empty:
         # Tenta converter 'data_hora' para datetime, tratando erros
@@ -487,23 +543,45 @@ def export_csv():
         
         # Aplica filtros de data
         if start_str:
-            is_valid, start_dt = parse_periodo_str(f"{start_str} a {start_str}") # Reutiliza a função de parse para validação
-            if is_valid: df = df[df["data_hora"] >= start_dt]
+            start_dt, _ = parse_periodo_str(f"{start_str} a {start_str}")
+            if start_dt: df = df[df["data_hora"] >= start_dt]
             
         if end_str:
-            is_valid, _, end_dt = parse_periodo_str(f"{end_str} a {end_str}")
-            if is_valid: df = df[df["data_hora"] <= end_dt]
+            _, end_dt = parse_periodo_str(f"{end_str} a {end_str}")
+            if end_dt: df = df[df["data_hora"] <= end_dt]
 
         # Formata a coluna 'data_hora' para o CSV
         df["data_hora"] = df["data_hora"].dt.strftime("%d/%m/%Y %H:%M").fillna("")
 
+        ## MODIFICAÇÃO: Prepara a coluna de materiais usados para exportação
+        # Cria uma coluna temporária com os nomes dos materiais para facilitar o lookup
+        materials_lookup = {row['id']: row for index, row in materials_df.iterrows()}
+
+        def format_used_materials(materials_list):
+            if not isinstance(materials_list, list):
+                return ""
+            formatted_items = []
+            for item in materials_list:
+                mat_id = item.get('material_id')
+                qty = item.get('quantidade')
+                material_info = materials_lookup.get(mat_id)
+                if material_info:
+                    formatted_items.append(f"{material_info['nome']} ({qty}{material_info['unidade']})")
+            return ", ".join(formatted_items)
+
+        df['materiais_usados_str'] = df['materiais_usados'].apply(format_used_materials)
+
     # Garante que todas as colunas esperadas estejam presentes
-    cols=["id","exam_id","idade","modalidade","exame","medico","data_hora","contraste_usado","contraste_qtd","user_email"]
+    # MODIFICAÇÃO: Atualiza a lista de colunas para exportação
+    cols=["id","exam_id","idade","modalidade","exame","medico","data_hora","user_email", "materiais_usados_str"]
     for c in cols:
         if c not in df.columns: df[c]=None
     
     # Preenche valores NaN/NaT antes de exportar
     df = df[cols].fillna('')
+
+    # Renomeia a coluna para o CSV final
+    df = df.rename(columns={'materiais_usados_str': 'Materiais Usados'})
 
     # Cria a resposta CSV
     resp = make_response(df.to_csv(index=False, encoding="utf-8-sig"))
@@ -517,7 +595,8 @@ def health():
     return {"status":"ok","time":datetime.utcnow().isoformat()}
 
 # -------------------- Dash Application --------------------
-external_stylesheets=[dbc.themes.BOOTSTRAP]
+## MODIFICAÇÃO: Adicionado Font Awesome CDN aos external_stylesheets
+external_stylesheets=[dbc.themes.BOOTSTRAP, "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"]
 dash_app = dash.Dash(__name__, server=server, url_base_pathname="/app/",
                      external_stylesheets=external_stylesheets, suppress_callback_exceptions=True,
                      title="Portal Radiológico (Local JSON)")
@@ -584,32 +663,64 @@ def navbar():
         className="mb-3"
     )
 
+## MODIFICAÇÃO: Repaginado o card de cadastro de exames
 def cadastro_card():
-    """Card para o formulário de Cadastro de Exame."""
+    """Card para o formulário de Cadastro de Exame, com repaginada."""
     return dbc.Card([
         dbc.CardHeader("Cadastro de Exame (Atendimento)", className="fw-semibold"),
         dbc.CardBody([
-            dbc.Row([
-                dbc.Col(dbc.Input(id="exam_id", placeholder="ID do exame (obrigatório)", type="text", maxLength=50), md=3), # Add maxLength
-                dbc.Col(dcc.Dropdown(id="modalidade", options=[{"label":mod_label(m),"value":m} for m in MODALIDADES], placeholder="Modalidade (obrigatório)"), md=3),
-                dbc.Col(dmc.Autocomplete(id="exame_auto", placeholder="Exame (catálogo ou digite, obrigatório)", data=[], limit=50), md=6),
-            ], className="mb-3"),
-            dbc.Row([
-                dbc.Col(dmc.DateTimePicker(
-                    id="data_dt",
-                    placeholder="Selecione data e hora (obrigatório)",
-                    valueFormat="DD/MM/YYYY HH:mm",
-                    withSeconds=False,
-                ), md=6),
-                # ## MODIFICAÇÃO: Input de texto para Autocomplete de médicos
-                dbc.Col(dmc.Autocomplete(id="medico_auto", placeholder="Médico responsável (obrigatório)", data=[], limit=50), md=6),
-            ], className="mb-3"),
-            dbc.Row([
-                dbc.Col(dbc.Input(id="idade", placeholder="Idade (0-120)", type="number", min=0, max=120), md=3),
-                dbc.Col(dbc.Checklist(id="contraste_usado", options=[{"label":" Usou contraste","value":"yes"}], value=[]), md=3),
-                dbc.Col(dbc.Input(id="contraste_qtd", placeholder="Qtd Contraste (mL)", type="number", min=0, step=1, disabled=True), md=3),
-                dbc.Col(html.Div(), md=3)
-            ], className="mb-2"),
+            html.Div([ # Agrupamento dos detalhes principais do exame
+                dbc.Row([
+                    dbc.Col(html.Div([
+                        html.Label("ID do Exame", className="form-label"),
+                        dbc.Input(id="exam_id", placeholder="Ex.: E-0001", type="text", maxLength=50),
+                    ]), md=3),
+                    dbc.Col(html.Div([
+                        html.Label("Modalidade", className="form-label"),
+                        dcc.Dropdown(id="modalidade", options=[{"label":mod_label(m),"value":m} for m in MODALIDADES], placeholder="Selecione a Modalidade"),
+                    ]), md=3),
+                    dbc.Col(html.Div([
+                        html.Label("Exame (Catálogo ou Digite)", className="form-label"),
+                        dmc.Autocomplete(id="exame_auto", placeholder="Ex.: Crânio, Tórax PA/L", data=[], limit=50),
+                    ]), md=6),
+                ], className="mb-3"),
+                dbc.Row([
+                    dbc.Col(html.Div([
+                        html.Label("Data e Hora", className="form-label"),
+                        dmc.DateTimePicker(
+                            id="data_dt",
+                            placeholder="Selecione data e hora",
+                            valueFormat="DD/MM/YYYY HH:mm",
+                            withSeconds=False,
+                        ),
+                    ]), md=6),
+                    dbc.Col(html.Div([
+                        html.Label("Médico Responsável", className="form-label"),
+                        dmc.Autocomplete(id="medico_auto", placeholder="Ex.: Dr. João Silva", data=[], limit=50),
+                    ]), md=6),
+                ], className="mb-3"),
+            ]), # Fim do agrupamento de detalhes principais
+
+            html.Hr(), # Separador
+
+            html.Div([ # Agrupamento de detalhes adicionais
+                dbc.Row([
+                    dbc.Col(html.Div([
+                        html.Label("Idade do Paciente", className="form-label"),
+                        dbc.Input(id="idade", placeholder="Idade (0-120)", type="number", min=0, max=120),
+                    ]), md=3),
+                    ## MODIFICAÇÃO: Botão com ícone para materiais e estilo
+                    dbc.Col(html.Div([
+                        html.Label("Materiais e Contrastes", className="form-label", style={"visibility":"hidden"}), # Label invisível para alinhamento
+                        dbc.Button([html.I(className="fas fa-flask me-2"), "Gerenciar Materiais"], id="btn_open_materials_modal", color="secondary", className="w-100 my-2"),
+                    ]), md=5),
+                    dbc.Col(html.Div([
+                        html.Label("Resumo de Materiais", className="form-label"),
+                        html.Div(id="selected_materials_summary", className="border rounded p-2 bg-light text-muted small"),
+                    ]), md=4),
+                ], className="mb-3"),
+            ]), # Fim do agrupamento de detalhes adicionais
+
             html.Hr(),
             dbc.Row(
                 dbc.Col(
@@ -633,32 +744,48 @@ def filtros_card():
         ]))
     ], className="shadow-sm")
 
+## MODIFICAÇÃO: Nova estrutura de KPIs e Gráficos do Dashboard
 def kpis_graficos():
     """Layout para os KPIs e gráficos do Dashboard."""
     return html.Div([
         dbc.Row([
             dbc.Col(dbc.Card(dbc.CardBody([html.H6("Total de Exames"), html.H2(id="kpi_total")]), className="shadow-sm"), md=3),
-            dbc.Col(dbc.Card(dbc.CardBody([html.H6("% c/ Contraste"), html.H2(id="kpi_contraste")]), className="shadow-sm"), md=3),
-            dbc.Col(dbc.Card(dbc.CardBody([html.H6("Idade Média"), html.H2(id="kpi_idade_media")]), className="shadow-sm"), md=3),
-            dbc.Col(dbc.Card(dbc.CardBody([html.H6("Idade Mediana"), html.H2(id="kpi_idade_mediana")]), className="shadow-sm"), md=3),
+            dbc.Col(dbc.Card(dbc.CardBody([html.H6("Custo Total de Materiais"), html.H2(id="kpi_total_material_cost")]), className="shadow-sm"), md=3), # MODIFICAÇÃO: Novo KPI
+            dbc.Col(dbc.Card(dbc.CardBody([html.H6("Custo Médio por Exame"), html.H2(id="kpi_avg_exam_cost")]), className="shadow-sm"), md=3), # MODIFICAÇÃO: Novo KPI
+            dbc.Col(dbc.Card(dbc.CardBody([html.H6("Total Contraste (mL)"), html.H2(id="kpi_total_contrast_ml")]), className="shadow-sm"), md=3), # MODIFICAÇÃO: Novo KPI
         ], className="mb-3"),
-        # dcc.Loading para melhorar a UX durante o carregamento dos gráficos
         dcc.Loading(children=[
-            dbc.Row([dbc.Col(dcc.Graph(id="g_exames_modalidade"), md=6), dbc.Col(dcc.Graph(id="g_series_tempo"), md=6)], className="mb-3"),
-            dbc.Row([dbc.Col(dcc.Graph(id="g_ranking_medicos"), md=6), dbc.Col(dcc.Graph(id="g_contraste_pie"), md=6)])
-        ], type="circle"), # Tipo de loading, pode ser 'graph', 'cube', 'spin', 'default'
+            dbc.Row([
+                dbc.Col(dcc.Graph(id="g_exames_modalidade"), md=6),
+                dbc.Col(dcc.Graph(id="g_series_tempo"), md=6)
+            ], className="mb-3"),
+            dbc.Row([
+                dbc.Col(dcc.Graph(id="g_exames_por_idade"), md=6), # MODIFICAÇÃO: Novo Gráfico
+                dbc.Col(dcc.Graph(id="g_top_materials_cost"), md=6) # MODIFICAÇÃO: Novo Gráfico
+            ])
+        ], type="circle"),
     ])
 
 def exams_table_component(rows):
     """Construir a tabela de exames."""
+    # MODIFICAÇÃO: Alterado cabeçalho e exibição da coluna de contraste/materiais
     header = html.Thead(html.Tr([html.Th("ID"),html.Th("Exam ID"),html.Th("Modalidade"),html.Th("Exame"),html.Th("Médico"),
-                                 html.Th("Data/Hora"),html.Th("Idade"),html.Th("Contraste"),html.Th("Ações")]))
+                                 html.Th("Data/Hora"),html.Th("Idade"),html.Th("Materiais Usados"),html.Th("Ações")]))
     body=[]
+    materials_lookup = {m['id']: m for m in list_materials()} # Para buscar nomes e unidades
     for e in rows:
-        badge = dbc.Badge("Sim", color="success") if e.get("contraste_usado") else dbc.Badge("Não", color="secondary")
+        # Cria a string de materiais usados
+        used_materials_str = []
+        for mat_item in e.get('materiais_usados', []):
+            mat_info = materials_lookup.get(mat_item['material_id'])
+            if mat_info:
+                used_materials_str.append(f"{mat_info['nome']} ({mat_item['quantidade']}{mat_info['unidade']})")
+        
+        materials_display = ", ".join(used_materials_str) if used_materials_str else "Nenhum"
+
         body.append(html.Tr([
             html.Td(e.get("id")), html.Td(e.get("exam_id")), html.Td(mod_label(e.get("modalidade"))), html.Td(e.get("exame")),
-            html.Td(e.get("medico")), html.Td(format_dt_br(e.get("data_hora"))), html.Td(e.get("idade")), html.Td(badge),
+            html.Td(e.get("medico")), html.Td(format_dt_br(e.get("data_hora"))), html.Td(e.get("idade")), html.Td(materials_display), # MODIFICAÇÃO: Nova coluna
             html.Td(html.Div([
                 dbc.Button("Editar", id={"type":"edit_btn","id":e.get("id")}, size="sm", color="warning", className="me-2"),
                 dbc.Button("Excluir", id={"type":"del_btn","id":e.get("id")}, size="sm", color="danger")
@@ -772,6 +899,45 @@ def examtypes_table_component():
             ]))
         ]))
     return dbc.Table([header, html.Tbody(body)], bordered=True, hover=True, responsive=True, striped=True, className="align-middle")
+
+## MODIFICAÇÃO: Nova aba para o Catálogo de Materiais
+def ger_materials_tab():
+    """Conteúdo da aba 'Materiais e Contrastes' do menu Gerencial."""
+    return dbc.Row([
+        dbc.Col(dbc.Card([
+            dbc.CardHeader("Novo Material / Contraste"),
+            dbc.CardBody([
+                dbc.Input(id="nm_nome", placeholder="Nome (ex.: Gadolinio, Luva)", className="mb-2", maxLength=100),
+                dcc.Dropdown(id="nm_tipo", options=[{"label":t,"value":t} for t in MATERIAL_TYPES],
+                             placeholder="Tipo (Material ou Contraste)", className="mb-2"),
+                dbc.Input(id="nm_unidade", placeholder="Unidade (ex.: mL, par, unidade)", className="mb-2", maxLength=20),
+                dbc.Input(id="nm_valor", placeholder="Valor Unitário / por mL", type="number", min=0, step=0.01, className="mb-3"),
+                dbc.Button("Adicionar ao Catálogo", id="btn_nm_criar", color="primary"),
+                html.Div(id="nm_feedback", className="mt-3")
+            ])
+        ], className="shadow-sm"), md=4),
+        dbc.Col(dbc.Card([
+            dbc.CardHeader("Catálogo de Materiais e Contrastes"),
+            dbc.CardBody([html.Div(id="materials_table")])
+        ], className="shadow-sm"), md=8)
+    ])
+
+## MODIFICAÇÃO: Componente de tabela para Materiais
+def materials_table_component():
+    """Construir a tabela de materiais."""
+    mats = sorted(list_materials(), key=lambda x: (x.get("nome") or "").lower())
+    header = html.Thead(html.Tr([html.Th("ID"), html.Th("Nome"), html.Th("Tipo"), html.Th("Unidade"), html.Th("Valor"), html.Th("Ações")]))
+    body=[]
+    for m in mats:
+        body.append(html.Tr([
+            html.Td(m.get("id")), html.Td(m.get("nome")), html.Td(m.get("tipo")), html.Td(m.get("unidade")), html.Td(f"R$ {m.get('valor_unitario', 0):.2f}"),
+            html.Td(html.Div([
+                dbc.Button("Editar", id={"type":"mat_edit_btn","id":m.get("id")}, size="sm", color="warning", className="me-2"),
+                dbc.Button("Excluir", id={"type":"mat_del_btn","id":m.get("id")}, size="sm", color="danger")
+            ]))
+        ]))
+    return dbc.Table([header, html.Tbody(body)], bordered=True, hover=True, responsive=True, striped=True, className="align-middle")
+
 
 def ger_custom_tab():
     """Conteúdo da aba 'Customização' do menu Gerencial."""
@@ -888,6 +1054,7 @@ def gerencial_content():
             dbc.Tab(label="Usuários", tab_id="g_users", children=[ger_users_tab()]),
             dbc.Tab(label="Médicos", tab_id="g_doctors", children=[ger_doctors_tab()]),
             dbc.Tab(label="Catálogo de Exames", tab_id="g_examtypes", children=[ger_examtypes_tab()]),
+            dbc.Tab(label="Materiais e Contrastes", tab_id="g_materials", children=[ger_materials_tab()]), # MODIFICAÇÃO: Nova aba
             dbc.Tab(label="Customização", tab_id="g_custom", children=[ger_custom_tab()]),
             dbc.Tab(label="Logs", tab_id="g_logs", children=[ger_logs_tab()]),
         ])
@@ -901,6 +1068,8 @@ dash_app.layout = lambda: dmc.MantineProvider(
             dbc.Container([
                 html.Link(id="theme_css", rel="stylesheet", href=THEMES.get(read_settings().get("theme","Flatly"), THEMES["Flatly"])),
                 dcc.Store(id="settings_store"), # Store para armazenar configurações e sincronizar UI
+                dcc.Store(id="current_materials_list", data=[]), # MODIFICAÇÃO: Store para os materiais selecionados no cadastro/edição
+                dcc.Store(id="materials_data_cache", data=list_materials()), # MODIFICAÇÃO: Cache dos dados de materiais para o Dashboard
                 navbar(), # Barra de navegação
                 dbc.Tabs(
                     id="tabs",
@@ -920,31 +1089,61 @@ dash_app.layout = lambda: dmc.MantineProvider(
                     ]
                 ),
                 # ----- Modais: Exame (Edição e Exclusão) -----
+                ## MODIFICAÇÃO: Repaginado o modal de edição de exames
                 dbc.Modal(id="edit_modal", is_open=False, size="lg", children=[
                     dbc.ModalHeader(dbc.ModalTitle("Editar Exame")),
                     dbc.ModalBody([
                         dcc.Store(id="edit_exam_id"), # Armazena o ID do exame sendo editado
-                        dbc.Row([
-                            dbc.Col(dbc.Input(id="edit_exam_id_text", placeholder="ID do exame", type="text", maxLength=50), md=3),
-                            dbc.Col(dcc.Dropdown(id="edit_modalidade", options=[{"label":mod_label(m),"value":m} for m in MODALIDADES], placeholder="Modalidade"), md=3),
-                            dbc.Col(dmc.Autocomplete(id="edit_exame_auto", placeholder="Exame (catálogo ou digite)", data=[], limit=50), md=6),
-                        ], className="mb-3"),
-                        dbc.Row([
-                            dbc.Col(dmc.DateTimePicker(
-                                id="edit_data_dt",
-                                placeholder="Selecione data e hora",
-                                valueFormat="DD/MM/YYYY HH:mm",
-                                withSeconds=False,
-                            ), md=6),
-                            # ## MODIFICAÇÃO: Input de texto para Autocomplete de médicos no modal de edição
-                            dbc.Col(dmc.Autocomplete(id="edit_medico_auto", placeholder="Médico responsável", data=[], limit=50), md=6),
-                        ], className="mb-3"),
-                        dbc.Row([
-                            dbc.Col(dbc.Input(id="edit_idade", placeholder="Idade", type="number", min=0, max=120), md=3),
-                            dbc.Col(dbc.Checklist(id="edit_contraste_usado", options=[{"label":" Usou contraste","value":"yes"}], value=[]), md=3),
-                            dbc.Col(dbc.Input(id="edit_contraste_qtd", placeholder="Qtd Contraste (mL)", type="number", min=0, step=1, disabled=True), md=3),
-                            dbc.Col(html.Div(), md=3)
-                        ])
+                        dcc.Store(id="edit_materials_list", data=[]), # MODIFICAÇÃO: Store para materiais selecionados na edição
+                        html.Div([ # Agrupamento dos detalhes principais do exame
+                            dbc.Row([
+                                dbc.Col(html.Div([
+                                    html.Label("ID do Exame", className="form-label"),
+                                    dbc.Input(id="edit_exam_id_text", placeholder="ID do exame", type="text", maxLength=50),
+                                ]), md=3),
+                                dbc.Col(html.Div([
+                                    html.Label("Modalidade", className="form-label"),
+                                    dcc.Dropdown(id="edit_modalidade", options=[{"label":mod_label(m),"value":m} for m in MODALIDADES], placeholder="Selecione a Modalidade"),
+                                ]), md=3),
+                                dbc.Col(html.Div([
+                                    html.Label("Exame (Catálogo ou Digite)", className="form-label"),
+                                    dmc.Autocomplete(id="edit_exame_auto", placeholder="Nome do Exame", data=[], limit=50),
+                                ]), md=6),
+                            ], className="mb-3"),
+                            dbc.Row([
+                                dbc.Col(html.Div([
+                                    html.Label("Data e Hora", className="form-label"),
+                                    dmc.DateTimePicker(
+                                        id="edit_data_dt",
+                                        placeholder="Selecione data e hora",
+                                        valueFormat="DD/MM/YYYY HH:mm",
+                                        withSeconds=False,
+                                    ),
+                                ]), md=6),
+                                dbc.Col(html.Div([
+                                    html.Label("Médico Responsável", className="form-label"),
+                                    dmc.Autocomplete(id="edit_medico_auto", placeholder="Nome do Médico", data=[], limit=50),
+                                ]), md=6),
+                            ], className="mb-3"),
+                        ]), # Fim do agrupamento de detalhes principais
+                        html.Hr(), # Separador
+                        html.Div([ # Agrupamento de detalhes adicionais
+                            dbc.Row([
+                                dbc.Col(html.Div([
+                                    html.Label("Idade do Paciente", className="form-label"),
+                                    dbc.Input(id="edit_idade", placeholder="Idade (0-120)", type="number", min=0, max=120),
+                                ]), md=3),
+                                ## MODIFICAÇÃO: Botão com ícone para materiais no modal de edição e estilo
+                                dbc.Col(html.Div([
+                                    html.Label("Materiais e Contrastes", className="form-label", style={"visibility":"hidden"}),
+                                    dbc.Button([html.I(className="fas fa-flask me-2"), "Gerenciar Materiais"], id="btn_edit_materials_modal", color="secondary", className="w-100 my-2"),
+                                ]), md=5),
+                                dbc.Col(html.Div([
+                                    html.Label("Resumo de Materiais", className="form-label"),
+                                    html.Div(id="edit_selected_materials_summary", className="border rounded p-2 bg-light text-muted small"),
+                                ]), md=4)
+                            ], className="mb-3")
+                        ]), # Fim do agrupamento de detalhes adicionais
                     ]),
                     dbc.ModalFooter([dbc.Button("Cancelar", id="edit_cancel", className="me-2"), dbc.Button("Salvar Alterações", id="edit_save", color="primary")])
                 ]),
@@ -960,6 +1159,17 @@ dash_app.layout = lambda: dmc.MantineProvider(
                         dbc.Button("Excluir definitivamente", id="delete_confirm", color="danger")
                     ])
                 ]),
+                ## MODIFICAÇÃO: Novo modal para adicionar/editar materiais em um exame - REESTRUTURADO
+                dbc.Modal(id="materials_modal", is_open=False, size="lg", children=[
+                    dbc.ModalHeader(dbc.ModalTitle("Materiais e Contrastes Utilizados")),
+                    dbc.ModalBody([
+                        html.Div(id="materials_modal_feedback"),
+                        html.Div(id="all_available_materials_list"), # MODIFICAÇÃO: Nova div para listar todos os materiais
+                        dbc.Alert("Clique em 'Salvar' no formulário do exame para persistir essas alterações.", color="info", className="mt-3", dismissable=True) # MODIFICAÇÃO: Adicionado dismissable
+                    ]),
+                    dbc.ModalFooter(dbc.Button("Fechar", id="btn_close_materials_modal", color="secondary"))
+                ]),
+
                 # ----- Modais: Usuário (editar próprio password) -----
                 dbc.Modal(id="change_pw_modal", is_open=False, children=[
                     dbc.ModalHeader(dbc.ModalTitle("Trocar senha")),
@@ -1005,7 +1215,7 @@ dash_app.layout = lambda: dmc.MantineProvider(
                     dbc.ModalHeader(dbc.ModalTitle("Excluir usuário?")),
                     dbc.ModalBody(html.Div(id="user_delete_info")),
                     dbc.ModalFooter([dbc.Button("Cancelar", id="user_delete_cancel", className="me-2"),
-                                     dbc.Button("Excluir", id="user_delete_confirm", color="danger")])
+                        dbc.Button("Excluir", id="user_delete_confirm", color="danger")])
                 ]),
                 dbc.Modal(id="doc_edit_modal", is_open=False, size="lg", children=[
                     dbc.ModalHeader(dbc.ModalTitle("Editar Médico")),
@@ -1032,7 +1242,7 @@ dash_app.layout = lambda: dmc.MantineProvider(
                         dbc.Row([
                             dbc.Col(dcc.Dropdown(id="ext_modalidade", options=[{"label":mod_label(m),"value":m} for m in MODALIDADES], placeholder="Modalidade"), md=4),
                             dbc.Col(dbc.Input(id="ext_nome", placeholder="Nome do exame", maxLength=100), md=5),
-                            dbc.Col(dbc.Input(id="ext_codigo", placeholder="Código (opcional)", maxLength=20), md=3),
+                            dbc.Col(dbc.Input(id="ext_codigo", placeholder="Código (opcional)", className="mb-3", maxLength=20), md=3),
                         ])
                     ]),
                     dbc.ModalFooter([dbc.Button("Cancelar", id="ext_edit_cancel", className="me-2"), dbc.Button("Salvar", id="ext_edit_save", color="primary")])
@@ -1043,6 +1253,26 @@ dash_app.layout = lambda: dmc.MantineProvider(
                     dbc.ModalBody(html.Div(id="ext_delete_info")),
                     dbc.ModalFooter([dbc.Button("Cancelar", id="ext_delete_cancel", className="me-2"),
                                      dbc.Button("Excluir", id="ext_delete_confirm", color="danger")])
+                ]),
+                ## MODIFICAÇÃO: Novos modais para materiais
+                dbc.Modal(id="material_edit_modal", is_open=False, size="lg", children=[
+                    dbc.ModalHeader(dbc.ModalTitle("Editar Material / Contraste")),
+                    dbc.ModalBody([
+                        dcc.Store(id="edit_material_id"),
+                        dbc.Input(id="em_nome", placeholder="Nome", className="mb-2", maxLength=100),
+                        dcc.Dropdown(id="em_tipo", options=[{"label":t,"value":t} for t in MATERIAL_TYPES],
+                                     placeholder="Tipo", className="mb-2"),
+                        dbc.Input(id="em_unidade", placeholder="Unidade", className="mb-2", maxLength=20),
+                        dbc.Input(id="em_valor", placeholder="Valor Unitário / por mL", type="number", min=0, step=0.01),
+                    ]),
+                    dbc.ModalFooter([dbc.Button("Cancelar", id="material_edit_cancel", className="me-2"), dbc.Button("Salvar", id="material_edit_save", color="primary")])
+                ]),
+                dcc.Store(id="delete_material_id"),
+                dbc.Modal(id="material_confirm_delete_modal", is_open=False, children=[
+                    dbc.ModalHeader(dbc.ModalTitle("Excluir Material / Contraste?")),
+                    dbc.ModalBody(html.Div(id="material_delete_info")),
+                    dbc.ModalFooter([dbc.Button("Cancelar", id="material_delete_cancel", className="me-2"),
+                                     dbc.Button("Excluir", id="material_delete_confirm", color="danger")])
                 ])
             ], fluid=True, className="pb-4")
         )
@@ -1051,11 +1281,7 @@ dash_app.layout = lambda: dmc.MantineProvider(
 
 # -------------------- Callbacks de Interação da UI --------------------
 
-# Cadastro de EXAME
-@dash_app.callback(Output("contraste_qtd","disabled"), Output("contraste_qtd","value"), Input("contraste_usado","value"))
-def toggle_qtd(ck):
-    """Habilita/desabilita campo de quantidade de contraste com base no checkbox."""
-    en = bool(ck and "yes" in ck); return (not en), (None if en else 0)
+## MODIFICAÇÃO: Remove callback de toggle_qtd
 
 # ## MODIFICAÇÃO: Callback para carregar médicos para o Autocomplete de cadastro de exame
 @dash_app.callback(
@@ -1093,16 +1319,24 @@ def load_edit_auto_data(mod, opened):
 
 @dash_app.callback(
     Output("save_feedback","children"),
+    ## MODIFICAÇÃO: Adicionado Output para limpar campos após salvar
+    Output("exam_id","value"), Output("idade","value"), Output("modalidade","value"),
+    Output("exame_auto","value"), Output("medico_auto","value"), Output("data_dt","value"),
+    Output("selected_materials_summary","children", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True
+    Output("current_materials_list","data"),
     Input("btn_salvar","n_clicks"),
     State("exam_id","value"), State("idade","value"), State("modalidade","value"),
     State("exame_auto","value"), State("medico_auto","value"), # ## MODIFICAÇÃO: Alterado de medico para medico_auto.value
     State("data_dt","value"),
-    State("contraste_usado","value"), State("contraste_qtd","value"),
+    State("current_materials_list","data"), # MODIFICAÇÃO: Pega a lista de materiais do store
+    State("materials_data_cache","data"), # MODIFICAÇÃO: Adicionado para ter o catálogo mais recente
     prevent_initial_call=True
 )
-def salvar_exame(n, exam_id, idade, modalidade, exame_txt, medico, data_dt, ck, qtd):
+def salvar_exame(n, exam_id, idade, modalidade, exame_txt, medico, data_dt, materiais_usados, all_materials_data): # MODIFICAÇÃO: materiais_usados
     """Salva um novo registro de exame, com validação de campos."""
-    if not session.get("user_id"): return dbc.Alert("Sessão expirada. Faça login novamente.", color="warning")
+    if not session.get("user_id"): 
+        return (dbc.Alert("Sessão expirada. Faça login novamente.", color="warning"), 
+                no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update)
 
     # Validação de campos obrigatórios
     feedback_msgs = []
@@ -1124,16 +1358,23 @@ def salvar_exame(n, exam_id, idade, modalidade, exame_txt, medico, data_dt, ck, 
 
     if not data_dt: feedback_msgs.append("Data/Hora é obrigatória.")
 
+    # MODIFICAÇÃO: Validação de quantidades de materiais
+    materials_lookup = {m['id']: m for m in all_materials_data}
+    for item in materiais_usados:
+        qty_valid, qty_val = validate_positive_float(item.get('quantidade'), f"Quantidade para {materials_lookup.get(item['material_id'], {}).get('nome', 'Material Desconhecido')}")
+        if not qty_valid:
+            feedback_msgs.append(qty_val)
+
+
     if feedback_msgs:
-        return dbc.Alert(html.Ul([html.Li(msg) for msg in feedback_msgs]), color="danger")
+        return (dbc.Alert(html.Ul([html.Li(msg) for msg in feedback_msgs]), color="danger"), 
+                no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update)
 
     try:
         dt = datetime.fromisoformat(data_dt)
     except ValueError: # Tratamento específico para data/hora
-        return dbc.Alert("Data/Hora inválida. Verifique o formato.", color="danger")
-
-    contraste = bool(ck and "yes" in ck)
-    clean_qtd = float(qtd or 0) if contraste else 0.0 # Define qtd como 0 se não usou contraste
+        return (dbc.Alert("Data/Hora inválida. Verifique o formato.", color="danger"), 
+                no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update)
 
     u=current_user()
     rec={
@@ -1143,32 +1384,37 @@ def salvar_exame(n, exam_id, idade, modalidade, exame_txt, medico, data_dt, ck, 
         "exame":clean_exame,
         "medico":clean_medico,
         "data_hora":dt.isoformat(),
-        "contraste_usado":contraste,
-        "contraste_qtd":clean_qtd,
-        "user_email":u.get("email") if u else None
+        "user_email":u.get("email") if u else None,
+        "materiais_usados": materiais_usados # MODIFICAÇÃO: Nova chave para materiais usados
     }
     try:
         new_id = add_exam(rec)
         log_action(u.get("email") if u else None, "create", "exam", new_id, before=None, after=rec)
-        return dbc.Alert("Exame salvo com sucesso!", color="success", duration=4000)
+        # Limpa os campos após salvar com sucesso
+        return (dbc.Alert("Exame salvo com sucesso!", color="success", duration=4000), 
+                "", None, None, "", "", None, "", []) # MODIFICAÇÃO: Limpa campos e a lista de materiais
     except Exception as e:
         print(f"Erro ao salvar exame: {e}") # Loga o erro detalhado
-        return dbc.Alert("Erro inesperado ao salvar. Tente novamente.", color="danger")
+        return (dbc.Alert("Erro inesperado ao salvar. Tente novamente.", color="danger"), 
+                no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update)
 
 # Dashboard
 @dash_app.callback(
     Output("data_cache","data"), # CORRIGIDO: de 'children' para 'data'
     Input("tabs","active_tab"), Input("filtro_modalidade","value"),
     Input("filtro_medico","value"), Input("filtro_periodo","value"),
+    Input("btn_salvar","n_clicks"), # MODIFICAÇÃO: Atualiza cache ao salvar novo exame
+    prevent_initial_call=False
 )
-def load_data(tab, modalidades, medico_like, periodo):
+def load_data(tab, modalidades, medico_like, periodo, n_clicks_salvar): # MODIFICAÇÃO: n_clicks_salvar
     """Carrega e filtra dados para o Dashboard, armazenando em cache."""
     if tab!="dashboard": return no_update # Evita execução desnecessária
     
     df = pd.DataFrame(list_exams())
     
     if df.empty:
-        return pd.DataFrame(columns=["exam_id","idade","modalidade","exame","medico","data_hora","contraste_usado","contraste_qtd"]).to_json(orient="records")
+        # MODIFICAÇÃO: Atualiza colunas para refletir a nova estrutura
+        return pd.DataFrame(columns=["exam_id","idade","modalidade","exame","medico","data_hora","materiais_usados"]).to_json(orient="records")
     
     # Aplica filtros
     if modalidades: df=df[df["modalidade"].isin(modalidades)]
@@ -1186,23 +1432,32 @@ def load_data(tab, modalidades, medico_like, periodo):
     return df.to_json(orient="records", date_format="iso")
 
 @dash_app.callback(
-    Output("kpi_total","children"), Output("kpi_contraste","children"),
-    Output("kpi_idade_media","children"), Output("kpi_idade_mediana","children"),
-    Output("g_exames_modalidade","figure"), Output("g_series_tempo","figure"),
-    Output("g_ranking_medicos","figure"), Output("g_contraste_pie","figure"),
+    Output("kpi_total","children"),
+    Output("kpi_total_material_cost","children"), # MODIFICAÇÃO: Novo KPI
+    Output("kpi_avg_exam_cost","children"), # MODIFICAÇÃO: Novo KPI
+    Output("kpi_total_contrast_ml","children"), # MODIFICAÇÃO: Novo KPI
+    Output("g_exames_modalidade","figure"),
+    Output("g_series_tempo","figure"),
+    Output("g_exames_por_idade","figure"), # MODIFICAÇÃO: Novo Gráfico
+    Output("g_top_materials_cost","figure"), # MODIFICAÇÃO: Novo Gráfico
     Input("data_cache","data"), # CORRIGIDO: de 'children' para 'data'
+    Input("materials_data_cache","data") # MODIFICAÇÃO: Pega dados de materiais do cache
 )
-def update_dashboard(json_data):
+def update_dashboard(json_data, materials_data): # MODIFICAÇÃO: materials_data
     """Atualiza todos os KPIs e gráficos do Dashboard com base nos dados filtrados."""
     empty_fig = px.scatter(title="Sem dados") # Figura padrão para quando não há dados
     
+    # MODIFICAÇÃO: Adicionado default para todos os KPIs
+    kpi_defaults = ["0", "R$ 0,00", "R$ 0,00", "0 mL"] 
+    chart_defaults = [empty_fig]*4 # Quatro gráficos
+    
     if not json_data:
-        return "0","0%","-","-",empty_fig,empty_fig,empty_fig,empty_fig
+        return (*kpi_defaults, *chart_defaults) # Retorna todos os defaults
     
     df = pd.read_json(json_data, orient="records")
     
     if df.empty:
-        return "0","0%","-","-",empty_fig,empty_fig,empty_fig,empty_fig
+        return (*kpi_defaults, *chart_defaults) # Retorna todos os defaults
     
     # Garante que 'data_hora' seja datetime
     if "data_hora" in df.columns:
@@ -1210,10 +1465,29 @@ def update_dashboard(json_data):
         df = df.dropna(subset=['data_hora']) # Remove NaT após coerção
 
     # Cálculos dos KPIs
-    total = len(df)
-    pct_contraste = float(df.get("contraste_usado", pd.Series(dtype=bool)).mean()*100.0) if "contraste_usado" in df else 0.0
-    media_idade = df["idade"].mean() if "idade" in df and not df["idade"].isna().all() else None
-    mediana_idade = df["idade"].median() if "idade" in df and not df["idade"].isna().all() else None
+    total_exams = len(df)
+    
+    # Custo Total de Materiais
+    total_material_cost = 0.0
+    total_contrast_ml = 0.0
+    materials_df = pd.DataFrame(materials_data)
+    
+    if not materials_df.empty:
+        materials_lookup = {m['id']: m for m in materials_df.to_dict(orient='records')}
+        
+        for index, row in df.iterrows():
+            for mat_item in row.get('materiais_usados', []):
+                material_info = materials_lookup.get(mat_item['material_id'])
+                if material_info:
+                    cost = mat_item.get('quantidade', 0) * material_info.get('valor_unitario', 0)
+                    total_material_cost += cost
+                    
+                    if material_info.get('tipo') == 'Contraste':
+                        total_contrast_ml += mat_item.get('quantidade', 0)
+
+    # Custo Médio por Exame
+    avg_exam_cost = total_material_cost / total_exams if total_exams > 0 else 0.0
+
 
     # Geração dos gráficos
     # Exames por Modalidade
@@ -1230,24 +1504,62 @@ def update_dashboard(json_data):
     else:
         fig_series = empty_fig.update_layout(title_text="Exames ao Longo do Tempo") # Mantém o título mesmo vazio
     
-    # Ranking de Médicos
-    fig_med = px.bar(df.groupby("medico", as_index=False).size().rename(columns={"size":"qtd"}).sort_values("qtd", ascending=False).head(15),
-                     x="medico", y="qtd", title="Ranking de Médicos",
-                     labels={"medico":"Médico","qtd":"Quantidade"})
+    ## MODIFICAÇÃO: Gráfico de Exames por Faixa Etária
+    def get_age_group(age):
+        if age is None: return "Desconhecido"
+        if age <= 12: return "0-12 (Criança)"
+        elif age <= 19: return "13-19 (Adolescente)"
+        elif age <= 39: return "20-39 (Adulto Jovem)"
+        elif age <= 59: return "40-59 (Adulto)"
+        else: return "60+ (Idoso)"
     
-    # % Exames com Contraste (Gráfico de Pizza)
-    fig_pie = px.pie(df.assign(label=df.get("contraste_usado", pd.Series(dtype=bool)).map({True:"Com contraste", False:"Sem contraste"})),
-                     names="label", title="% Exames com Contraste")
+    df["faixa_etaria"] = df["idade"].apply(get_age_group)
+    age_group_order = ["0-12 (Criança)", "13-19 (Adolescente)", "20-39 (Adulto Jovem)", "40-59 (Adulto)", "60+ (Idoso)", "Desconhecido"]
     
-    return (f"{total}",
-            f"{pct_contraste:.1f}%",
-            f"{media_idade:.1f}" if media_idade is not None else "-",
-            f"{mediana_idade:.1f}" if mediana_idade is not None else "-",
-            fig_mod, fig_series, fig_med, fig_pie)
+    fig_age = px.bar(df.groupby("faixa_etaria", as_index=False).size().rename(columns={"size":"qtd"}),
+                     x="faixa_etaria", y="qtd", title="Exames por Faixa Etária",
+                     labels={"faixa_etaria":"Faixa Etária","qtd":"Quantidade"})
+    fig_age.update_xaxes(categoryorder='array', categoryarray=age_group_order)
+
+
+    ## MODIFICAÇÃO: Gráfico Top 10 Materiais/Contrastes por Custo
+    all_used_materials_cost = []
+    if not materials_df.empty:
+        for index, row in df.iterrows():
+            for mat_item in row.get('materiais_usados', []):
+                material_info = materials_lookup.get(mat_item['material_id'])
+                if material_info:
+                    cost = mat_item.get('quantidade', 0) * material_info.get('valor_unitario', 0)
+                    all_used_materials_cost.append({
+                        "material_name": material_info['nome'],
+                        "cost": cost
+                    })
+    
+    if all_used_materials_cost:
+        materials_cost_df = pd.DataFrame(all_used_materials_cost).groupby('material_name')['cost'].sum().reset_index()
+        materials_cost_df = materials_cost_df.sort_values('cost', ascending=False).head(10) # Top 10 por custo
+        fig_top_materials = px.bar(materials_cost_df, x="material_name", y="cost", 
+                                   title="Top 10 Materiais/Contrastes por Custo Total",
+                                   labels={"material_name":"Material/Contraste","cost":"Custo (R$)"})
+        fig_top_materials.update_layout(yaxis_tickformat=".2f") # Formato de moeda para o eixo Y
+    else:
+        fig_top_materials = empty_fig.update_layout(title_text="Top 10 Materiais/Contrastes por Custo Total")
+    
+    return (f"{total_exams}",
+            f"R$ {total_material_cost:.2f}",
+            f"R$ {avg_exam_cost:.2f}",
+            f"{total_contrast_ml:.1f} mL",
+            fig_mod, fig_series, fig_age, fig_top_materials) # MODIFICAÇÃO: Retorna novos KPIs e Gráficos
 
 # Tabela de Exames
-@dash_app.callback(Output("exams_table","children"), Input("tabs","active_tab"))
-def render_exams_table(tab):
+@dash_app.callback(
+    Output("exams_table","children"),
+    Input("tabs","active_tab"),
+    Input("btn_salvar","n_clicks"), # MODIFICAÇÃO: Atualiza tabela ao salvar
+    Input("edit_save","n_clicks"), # MODIFICAÇÃO: Atualiza tabela ao editar
+    Input("delete_confirm","n_clicks") # MODIFICAÇÃO: Atualiza tabela ao excluir
+)
+def render_exams_table(tab, n_clicks_salvar, n_clicks_edit, n_clicks_delete): # MODIFICAÇÃO: Novos Inputs
     """Renderiza a tabela de exames quando a aba 'Exames' está ativa."""
     if tab!="exames": return no_update
     rows = sorted(list_exams(), key=lambda x: x.get("id",0), reverse=True)
@@ -1255,22 +1567,24 @@ def render_exams_table(tab):
 
 # Edição de EXAME
 @dash_app.callback(
-    Output("edit_modal","is_open"),
-    Output("edit_exam_id","data"),
-    Output("edit_exam_id_text","value"),
-    Output("edit_modalidade","value"),
-    Output("edit_exame_auto","value"),
-    Output("edit_data_dt","value"),
-    Output("edit_medico_auto","value"), # ## MODIFICAÇÃO: Alterado de edit_medico para edit_medico_auto
-    Output("edit_idade","value"),
-    Output("edit_contraste_usado","value"),
-    Output("edit_contraste_qtd","value"),
+    Output("edit_modal","is_open", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True adicionado aqui
+    Output("edit_exam_id","data", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True adicionado aqui
+    Output("edit_exam_id_text","value", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True adicionado aqui
+    Output("edit_modalidade","value", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True adicionado aqui
+    Output("edit_exame_auto","value", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True adicionado aqui
+    Output("edit_data_dt","value", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True adicionado aqui
+    Output("edit_medico_auto","value", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True adicionado aqui
+    Output("edit_idade","value", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True adicionado aqui
+    ## MODIFICAÇÃO: Remove old contrast fields, adds new materials store and summary
+    Output("edit_materials_list","data", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True adicionado aqui
+    Output("edit_selected_materials_summary","children", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True
     Input({"type":"edit_btn","id":ALL},"n_clicks"),
     Input("edit_cancel","n_clicks"),
     State("edit_modal","is_open"),
+    State("materials_data_cache","data"), # MODIFICAÇÃO: Adicionado para ter o catálogo mais recente
     prevent_initial_call=True
 )
-def open_edit_modal(edit_clicks, cancel_click, is_open):
+def open_edit_modal(edit_clicks, cancel_click, is_open, all_materials_data): # MODIFICAÇÃO: all_materials_data
     """Abre o modal de edição de exame e carrega os dados do exame selecionado."""
     from dash import callback_context as ctx
     if not ctx.triggered: raise dash.exceptions.PreventUpdate
@@ -1280,7 +1594,8 @@ def open_edit_modal(edit_clicks, cancel_click, is_open):
     triggered_value = triggered_input["value"] # Valor do n_clicks
 
     if triggered_prop_id == "edit_cancel.n_clicks":
-        return False, None, None, None, None, None, None, None, [], None # Limpa os campos e fecha
+        # MODIFICAÇÃO: Limpa campos de edição e materiais
+        return False, None, None, None, None, None, None, None, [], "" # Limpa os campos e fecha
     
     # Adicionada verificação explícita do valor de n_clicks
     if triggered_value is None or triggered_value == 0:
@@ -1299,15 +1614,14 @@ def open_edit_modal(edit_clicks, cancel_click, is_open):
     except (ValueError, TypeError): # Trata erros de conversão de data
         pass
     
-    ck = ["yes"] if e.get("contraste_usado") else []
+    ## MODIFICAÇÃO: Carrega materiais do exame para o store e gera resumo
+    current_materials = e.get("materiais_usados", [])
+    materials_summary = get_materials_summary_component(current_materials, all_materials_data) # Passa all_materials_data
     
     return (True, exam_id_to_edit, e.get("exam_id"), e.get("modalidade"), e.get("exame"),
-            e_dt_value, e.get("medico"), e.get("idade"), ck, e.get("contraste_qtd"))
+            e_dt_value, e.get("medico"), e.get("idade"), current_materials, materials_summary) # MODIFICAÇÃO: Retorna materiais
 
-@dash_app.callback(Output("edit_contraste_qtd","disabled"), Input("edit_contraste_usado","value"))
-def toggle_edit_qtd(ck):
-    """Habilita/desabilita campo de quantidade de contraste no modal de edição."""
-    return not bool(ck and "yes" in ck)
+## MODIFICAÇÃO: Remove callback toggle_edit_qtd
 
 @dash_app.callback(
     Output("edit_modal","is_open", allow_duplicate=True),
@@ -1319,13 +1633,13 @@ def toggle_edit_qtd(ck):
     State("edit_modalidade","value"),
     State("edit_exame_auto","value"),
     State("edit_data_dt","value"),
-    State("edit_medico_auto","value"), # ## MODIFICAÇÃO: Alterado de edit_medico para edit_medico_auto
+    State("edit_medico_auto","value"), # ## MODIFICAÇÃO: Alterado de medico para medico_auto.value
     State("edit_idade","value"),
-    State("edit_contraste_usado","value"),
-    State("edit_contraste_qtd","value"),
+    State("edit_materials_list","data"), # MODIFICAÇÃO: Pega a lista de materiais do store
+    State("materials_data_cache","data"), # MODIFICAÇÃO: Adicionado para ter o catálogo mais recente
     prevent_initial_call=True
 )
-def save_edit(n, exam_id, exam_id_text, modalidade, exame_txt, edit_data_dt, medico, idade, ck, qtd):
+def save_edit(n, exam_id, exam_id_text, modalidade, exame_txt, edit_data_dt, medico, idade, materiais_usados, all_materials_data): # MODIFICAÇÃO: materiais_usados
     """Salva as alterações de um exame editado, com validação."""
     if not exam_id: raise dash.exceptions.PreventUpdate
 
@@ -1348,6 +1662,13 @@ def save_edit(n, exam_id, exam_id_text, modalidade, exame_txt, edit_data_dt, med
 
     if not edit_data_dt: feedback_msgs.append("Data/Hora é obrigatória.")
 
+    # MODIFICAÇÃO: Validação de quantidades de materiais
+    materials_lookup = {m['id']: m for m in all_materials_data}
+    for item in materiais_usados:
+        qty_valid, qty_val = validate_positive_float(item.get('quantidade'), f"Quantidade para {materials_lookup.get(item['material_id'], {}).get('nome', 'Material Desconhecido')}")
+        if not qty_valid:
+            feedback_msgs.append(qty_val)
+
     if feedback_msgs:
         return True, dbc.Alert(html.Ul([html.Li(msg) for msg in feedback_msgs]), color="danger"), no_update
 
@@ -1355,9 +1676,6 @@ def save_edit(n, exam_id, exam_id_text, modalidade, exame_txt, edit_data_dt, med
         dt = datetime.fromisoformat(edit_data_dt)
     except ValueError:
         return True, dbc.Alert("Data/Hora inválida. Verifique o formato.", color="danger"), no_update
-
-    contraste = bool(ck and "yes" in ck)
-    clean_qtd = float(qtd or 0) if contraste else 0.0
 
     before = next((x for x in list_exams() if x.get("id")==int(exam_id)), None)
     
@@ -1368,8 +1686,7 @@ def save_edit(n, exam_id, exam_id_text, modalidade, exame_txt, edit_data_dt, med
         "medico":clean_medico,
         "data_hora":dt.isoformat(),
         "idade":clean_idade,
-        "contraste_usado":contraste,
-        "contraste_qtd":clean_qtd
+        "materiais_usados": materiais_usados # MODIFICAÇÃO: Atualiza materiais
     }
 
     changed = update_exam(int(exam_id), updated_fields)
@@ -1449,6 +1766,230 @@ def confirm_delete(n, exam_id):
     fb = dbc.Alert(f"Exame #{exam_id} excluído.", color="success", duration=3000) if ok else dbc.Alert("Não foi possível excluir.", color="danger")
     rows = sorted(list_exams(), key=lambda x: x.get("id",0), reverse=True)
     return fb, exams_table_component(rows), False
+
+## MODIFICAÇÃO: Callbacks para o modal de Materiais (Adicionar/Editar Exame)
+def get_materials_summary_component(materials_list, all_materials_data): # MODIFICADO: Agora recebe all_materials_data
+    """Cria um componente para resumir os materiais selecionados."""
+    if not materials_list:
+        return html.Span("Nenhum material/contraste adicionado.", className="text-muted")
+    
+    materials_lookup = {m['id']: m for m in all_materials_data} # MODIFICADO: Usa all_materials_data
+    summary_items = []
+    for item in materials_list:
+        mat_info = materials_lookup.get(item['material_id'])
+        if mat_info:
+            summary_items.append(f"{mat_info['nome']} ({item['quantidade']}{mat_info['unidade']})")
+    return html.Span(f"Adicionados: {len(materials_list)} itens ({', '.join(summary_items[:2])}{'...' if len(summary_items) > 2 else ''})")
+
+
+@dash_app.callback(
+    Output("materials_modal","is_open"),
+    Output("current_materials_list","data", allow_duplicate=True), # Para Cadastro
+    Output("edit_materials_list","data", allow_duplicate=True), # Para Edição
+    Output("materials_modal_feedback","children"),
+    Output("all_available_materials_list","children"), # MODIFICAÇÃO: Nova div para listar todos os materiais
+    Input("btn_open_materials_modal","n_clicks"), # Abre do cadastro
+    Input("btn_edit_materials_modal","n_clicks"), # Abre da edição
+    Input("btn_close_materials_modal","n_clicks"), # Fechar o modal
+    Input({"type": "toggle_mat_btn", "id": ALL}, "n_clicks"), # MODIFICAÇÃO: Botões de +/-, com ALL
+    Input({"type": "qty_input", "id": ALL}, "value"), # MODIFICAÇÃO: Inputs de quantidade, com ALL
+    State("current_materials_list","data"), # Materiais do cadastro (origem 1)
+    State("edit_materials_list","data"), # Materiais da edição (origem 2)
+    State("materials_data_cache","data"), # MODIFICAÇÃO: Adicionado para ter o catálogo mais recente
+    prevent_initial_call=True
+)
+def manage_materials_modal(
+    open_btn_cadastro, open_btn_edit, close_btn, toggle_btn_clicks, qty_input_values_list, # MODIFICAÇÃO: Renomeado para evitar confusão
+    current_materials_cadastro, current_materials_edit, all_materials_data # MODIFICAÇÃO: Recebe o catálogo completo de materiais
+):
+    from dash import callback_context as ctx
+    if not ctx.triggered: raise dash.exceptions.PreventUpdate
+
+    triggered_id = ctx.triggered_id
+    materials_to_use = []
+    is_edit_context = False
+
+    # Determine se estamos no contexto de edição (para saber qual store usar)
+    # A verificação com ctx.states.get('btn_edit_materials_modal.n_clicks') garante que o modal foi aberto pelo botão de edição
+    if (triggered_id == "btn_edit_materials_modal" or \
+        (isinstance(triggered_id, dict) and triggered_id.get('type') in ['toggle_mat_btn', 'qty_input'] and (ctx.states.get('btn_edit_materials_modal.n_clicks') or 0) > 0)): 
+        materials_to_use = list(current_materials_edit) # Faça uma cópia mutável
+        is_edit_context = True
+    else: # Contexto de cadastro ou default
+        materials_to_use = list(current_materials_cadastro) # Faça uma cópia mutável
+    
+    feedback = ""
+    materials_lookup = {m['id']: m for m in all_materials_data} 
+
+    # Abrir o modal
+    if triggered_id in ["btn_open_materials_modal", "btn_edit_materials_modal"]:
+        initial_materials = list(current_materials_cadastro) if triggered_id == "btn_open_materials_modal" else list(current_materials_edit)
+        
+        # MODIFICAÇÃO: Renderiza a lista completa de materiais com base nos selecionados
+        return (True, initial_materials if not is_edit_context else no_update, 
+                initial_materials if is_edit_context else no_update, 
+                "", render_all_materials_list_with_toggles(all_materials_data, initial_materials))
+    
+    # Fechar o modal
+    if triggered_id == "btn_close_materials_modal":
+        return False, no_update, no_update, "", no_update
+    
+    # Lógica para botões de toggle (+/-)
+    if isinstance(triggered_id, dict) and triggered_id.get('type') == 'toggle_mat_btn':
+        material_id = triggered_id['id'] # O id já é int aqui, pois é passado como int no render_all_materials_list_with_toggles
+        
+        # Verifica se o material já está na lista
+        existing_material_idx = next((i for i, item in enumerate(materials_to_use) if item['material_id'] == material_id), -1)
+        
+        if existing_material_idx != -1: # Se já existe, remove
+            materials_to_use.pop(existing_material_idx)
+            feedback = dbc.Alert(f"{materials_lookup.get(material_id, {}).get('nome', 'Material')} removido.", color="danger", duration=1500)
+        else: # Se não existe, adiciona com quantidade padrão de 1.0
+            materials_to_use.append({"material_id": material_id, "quantidade": 1.0})
+            feedback = dbc.Alert(f"{materials_lookup.get(material_id, {}).get('nome', 'Material')} adicionado.", color="success", duration=1500)
+        
+        # Ordena a lista
+        materials_to_use.sort(key=lambda x: materials_lookup.get(x['material_id'], {}).get('nome', ''))
+
+    # Lógica para inputs de quantidade
+    if isinstance(triggered_id, dict) and triggered_id.get('type') == 'qty_input':
+        material_id = triggered_id['id']
+        # MODIFICAÇÃO CRÍTICA: Acessar o valor específico do input que disparou o callback
+        new_quantity_str = ctx.triggered[0]['value'] # CORRIGIDO: Use 'value' para o valor atual do Input
+
+        # Encontra o material na lista e atualiza a quantidade
+        found = False
+        for item in materials_to_use:
+            if item['material_id'] == material_id:
+                # O valor do input pode vir como string ou None se o campo for apagado
+                qty_to_validate = new_quantity_str if new_quantity_str is not None and new_quantity_str != '' else 0.0
+                
+                qty_valid, qty_val_msg = validate_positive_float(qty_to_validate, f"Quantidade para {materials_lookup.get(material_id, {}).get('nome', 'Material Desconhecido')}") # Use o nome do material no feedback
+                if qty_valid:
+                    item['quantidade'] = clean_qty
+                    feedback = "" # Limpa feedback se a validação for OK
+                else:
+                    feedback = dbc.Alert(f"Quantidade inválida para {materials_lookup.get(material_id, {}).get('nome', 'Material Desconhecido')}: {new_quantity_str}. {qty_val_msg}", color="danger", duration=3000) # Usar qty_val_msg
+                found = True
+                break
+        if not found: # Caso o input de quantidade seja alterado para um item que não está na lista de materiais selecionados (edge case)
+            feedback = dbc.Alert(f"Erro: Material {materials_lookup.get(material_id, {}).get('nome', 'Desconhecido')} não encontrado na lista de seleção. Adicione-o primeiro.", color="warning", duration=2000)
+    
+    # Atualiza o store correto e renderiza a lista completa de materiais no modal
+    return (no_update, materials_to_use if not is_edit_context else no_update, 
+            materials_to_use if is_edit_context else no_update, 
+            feedback, render_all_materials_list_with_toggles(all_materials_data, materials_to_use))
+
+
+## MODIFICAÇÃO: Nova função para renderizar todos os materiais com botões de toggle
+def render_all_materials_list_with_toggles(all_materials_data, selected_materials_for_exam):
+    """Renderiza todos os materiais cadastrados com botões de toggle e inputs de quantidade."""
+    if not all_materials_data:
+        return html.P("Nenhum material/contraste cadastrado.", className="text-muted mt-2")
+
+    materials_list_items = []
+    
+    # Criar um lookup rápido para os materiais já selecionados no exame
+    selected_materials_dict = {item['material_id']: item['quantidade'] for item in selected_materials_for_exam}
+
+    for m in sorted(all_materials_data, key=lambda x: (x.get('nome') or '').lower()):
+        material_id = m.get('id')
+        material_name = f"{m.get('nome')} ({m.get('unidade')})"
+        
+        is_selected = material_id in selected_materials_dict
+        current_qty = selected_materials_dict.get(material_id) # MODIFICAÇÃO: Não default para '' aqui, deixe como None se não estiver selecionado
+
+        # Botão de toggle (+/-)
+        toggle_button = dbc.Button(
+            html.I(className=f"fas fa-{'minus' if is_selected else 'plus'}"),
+            id={"type": "toggle_mat_btn", "id": material_id},
+            color=f"{'danger' if is_selected else 'success'}",
+            size="sm",
+            className="ms-auto" # Alinha o botão à direita
+        )
+
+        # Input de quantidade, visível apenas se selecionado
+        # Se for um valor None (não selecionado ou recém-adicionado com 1.0),
+        # garanta que o input exiba 1.0 ou o valor real do store.
+        # Definir value=current_qty or 1.0 para o input garante um valor numérico para exibição
+        display_qty = current_qty if current_qty is not None else 1.0
+
+        materials_list_items.append(
+            dbc.Row([
+                dbc.Col(html.Span(material_name, className="fw-semibold"), md=is_selected and 6 or 8), # Ocupa menos espaço se tiver input
+                dbc.Col(
+                    dbc.Input(
+                        id={"type": "qty_input", "id": material_id},
+                        type="number",
+                        value=display_qty, # MODIFICAÇÃO: Define o valor de exibição
+                        min=0,
+                        step=0.01,
+                        className="w-100 me-2" # Ocupa 100% da largura da coluna
+                    ),
+                    style={"display": "block"} if is_selected else {"display": "none"}, # Controla visibilidade
+                    md=3 # Coluna para o input de quantidade
+                ),
+                dbc.Col(toggle_button, md=is_selected and 3 or 4, className="d-flex justify-content-end") # Coluna do botão
+            ], className="align-items-center py-2 border-bottom") # Alinha itens verticalmente e adiciona borda
+        )
+    
+    return html.Div(materials_list_items, className="list-group list-group-flush")
+
+
+# Atualiza resumo de materiais no formulário principal
+## MODIFICAÇÃO: get_materials_summary_component também precisa de materials_data_cache
+@dash_app.callback(
+    Output("selected_materials_summary","children"),
+    Input("current_materials_list","data"),
+    State("materials_data_cache","data"), # MODIFICAÇÃO: Adicionado state para o catálogo
+    prevent_initial_call=True 
+)
+def update_cadastro_materials_summary(materials_list, all_materials_data): # MODIFICAÇÃO: Recebe all_materials_data
+    ## MODIFICAÇÃO: Passa all_materials_data para get_materials_summary_component
+    return get_materials_summary_component(materials_list, all_materials_data)
+
+@dash_app.callback(
+    Output("edit_selected_materials_summary","children", allow_duplicate=True), # MODIFICAÇÃO: allow_duplicate=True
+    Input("edit_materials_list","data"),
+    State("materials_data_cache","data"), # MODIFICAÇÃO: Adicionado state para o catálogo
+    prevent_initial_call=True 
+)
+def update_edit_materials_summary(materials_list, all_materials_data): # MODIFICAÇÃO: Recebe all_materials_data
+    ## MODIFICAÇÃO: Passa all_materials_data para get_materials_summary_component
+    return get_materials_summary_component(materials_list, all_materials_data)
+
+## MODIFICAÇÃO: get_materials_summary_component agora recebe materials_lookup_dict
+def get_materials_summary_component(materials_list, all_materials_data):
+    """Cria um componente para resumir os materiais selecionados."""
+    if not materials_list:
+        return html.Span("Nenhum material/contraste adicionado.", className="text-muted")
+    
+    ## MODIFICAÇÃO: Usa all_materials_data para criar o lookup
+    materials_lookup = {m['id']: m for m in all_materials_data} 
+    summary_items = []
+    for item in materials_list:
+        mat_info = materials_lookup.get(item['material_id'])
+        if mat_info:
+            summary_items.append(f"{mat_info['nome']} ({item['quantidade']}{mat_info['unidade']})")
+    return html.Span(f"Adicionados: {len(materials_list)} itens ({', '.join(summary_items[:2])}{'...' if len(summary_items) > 2 else ''})")
+
+
+## MODIFICAÇÃO: Callback para atualizar Autocomplete de materiais no modal (se houver novos cadastros)
+# Este callback não é mais necessário para o Autocomplete dentro do modal de materiais,
+# pois ele foi removido. No entanto, o `material_labels_for_autocomplete()` ainda é usado na inicialização.
+# Manter o callback para fins de atualização do `dmc.Autocomplete` de edição de materiais
+# caso ele seja reintroduzido ou necessário em outro lugar.
+@dash_app.callback(
+    Output("mat_auto","data"), # Embora este ID não seja mais usado na forma atual do modal, o Output ainda é necessário
+    Input("materials_modal","is_open"), # Trigger ao abrir modal
+    Input("btn_nm_criar","n_clicks"), # Trigger ao criar novo material no gerencial
+    Input("material_edit_save","n_clicks"), # Trigger ao editar material no gerencial
+    Input("material_delete_confirm","n_clicks"), # Trigger ao excluir material no gerencial
+    prevent_initial_call=True
+)
+def update_material_autocomplete_data(is_open, n_criar, n_editar, n_excluir):
+    return material_labels_for_autocomplete()
+
 
 # GERENCIAL: Usuários
 @dash_app.callback(
@@ -1660,7 +2201,6 @@ def confirm_user_del(n, uid):
     before = next((x for x in get_users() if x.get("id")==int(uid)), None)
     ok = delete_user(int(uid))
     
-    # Remove senha_hash do log para segurança
     if ok: log_action(cu.get("email") if cu else None, "delete", "user", int(uid), before={k:v for k,v in (before or {}).items() if k!="senha_hash"}, after=None)
     
     return users_table_component(), False
@@ -1698,7 +2238,7 @@ def render_doctors_table(tab):
     Output("doc_edit_modal","is_open"),
     Output("edit_doc_id","data"),
     Output("ed_nome","value"),
-    Output("ed_crm","value"),
+    Output("ed_crm","value"), # MODIFICAÇÃO: Corrigido Output para ed_crm.value
     Input({"type":"doc_edit_btn","id":ALL},"n_clicks"),
     Input("doc_edit_cancel","n_clicks"),
     prevent_initial_call=True
@@ -1725,7 +2265,7 @@ def open_doc_edit(edit_clicks, cancel_click):
     d = next((x for x in list_doctors() if x.get("id")==doc_id_to_edit), None)
     if not d: raise dash.exceptions.PreventUpdate
     
-    return True, doc_id_to_edit, d.get("nome"), d.get("crm")
+    return True, doc_id_to_edit, d.get("nome"), d.get("crm") # MODIFICAÇÃO: Retorna o CRM corretamente
 
 @dash_app.callback(
     Output("doc_edit_modal","is_open", allow_duplicate=True),
@@ -1775,7 +2315,6 @@ def open_doc_del(del_clicks, cancel_click):
 
     if triggered_prop_id == "doc_delete_cancel.n_clicks": return False, None, no_update
     
-    # Adicionada verificação explícita do valor de n_clicks
     if triggered_value is None or triggered_value == 0:
         raise dash.exceptions.PreventUpdate
 
@@ -1813,6 +2352,7 @@ def confirm_doc_del(n, did):
 @dash_app.callback(
     Output("nt_feedback","children"),
     Output("examtypes_table","children", allow_duplicate=True),
+    Output("materials_data_cache","data", allow_duplicate=True), # MODIFICAÇÃO: Atualiza cache de materiais no dashboard
     Input("btn_nt_criar","n_clicks"),
     State("nt_modalidade","value"), State("nt_nome","value"), State("nt_codigo","value"),
     prevent_initial_call=True
@@ -1820,7 +2360,7 @@ def confirm_doc_del(n, did):
 def criar_tipo_exame(n, modalidade, nome, codigo):
     """Cria um novo tipo de exame no catálogo, com validação e log."""
     cu = current_user()
-    if not cu or cu.get("perfil")!="admin": return dbc.Alert("Acesso negado.", color="danger"), no_update
+    if not cu or cu.get("perfil")!="admin": return dbc.Alert("Acesso negado.", color="danger"), no_update, no_update
     
     feedback_msgs = []
     is_valid_modalidade, clean_modalidade = validate_text_input(modalidade, "Modalidade")
@@ -1831,18 +2371,17 @@ def criar_tipo_exame(n, modalidade, nome, codigo):
     if not is_valid_nome: feedback_msgs.append(clean_nome)
     
     if feedback_msgs:
-        return dbc.Alert(html.Ul([html.Li(msg) for msg in feedback_msgs]), color="danger"), no_update
+        return dbc.Alert(html.Ul([html.Li(msg) for msg in feedback_msgs]), color="danger"), no_update, no_update
 
-    clean_codigo = (codigo or "").strip() or None # Código é opcional
-
-    rec = {"modalidade": clean_modalidade, "nome": clean_nome, "codigo": clean_codigo, "id":0}
+    rec = {"modalidade": clean_modalidade, "nome": clean_nome, "codigo": codigo, "id":0} # Note: 'codigo' passed as is, can be None
     tid = add_exam_type(rec)
     log_action(cu.get("email"), "create", "exam_type", tid, before=None, after=rec)
-    return dbc.Alert(f"Tipo de exame adicionado (ID {tid}).", color="success", duration=3000), examtypes_table_component()
+    # MODIFICAÇÃO: Não tem materiais aqui, então passamos o cache de materiais inalterado
+    return dbc.Alert(f"Tipo de exame adicionado (ID {tid}).", color="success", duration=3000), examtypes_table_component(), no_update
 
 @dash_app.callback(Output("examtypes_table","children"), Input("tabs_gerencial","active_tab"))
 def render_examtypes_table(tab):
-    """Renderiza a tabela de tipos de exame quando a aba 'Catálogo de Exames' está ativa."""
+    """Renderiza a tabela de tipos de exame quando la aba 'Catálogo de Exames' está ativa."""
     if tab!="g_examtypes": return no_update
     return examtypes_table_component()
 
@@ -1936,20 +2475,19 @@ def open_ext_del(del_clicks, cancel_click):
 
     if triggered_prop_id == "ext_delete_cancel.n_clicks": return False, None, no_update
     
-    # Adicionada verificação explícita do valor de n_clicks
     if triggered_value is None or triggered_value == 0:
         raise dash.exceptions.PreventUpdate
 
-    ext_id_to_delete = get_triggered_component_id_from_context(triggered_prop_id)
-    if not ext_id_to_delete:
+    ext_id_to_edit = get_triggered_component_id_from_context(triggered_prop_id)
+    if not ext_id_to_edit:
         raise dash.exceptions.PreventUpdate
     
-    t = next((x for x in list_exam_types() if x.get("id")==ext_id_to_delete), None)
+    t = next((x for x in list_exam_types() if x.get("id")==ext_id_to_edit), None)
     if not t: raise dash.exceptions.PreventUpdate
     
     info = html.Div([html.P([html.B(f"Tipo #{t.get('id')}"), f" — {mod_label(t.get('modalidade'))} - {t.get('nome')}"]),
-                     dbc.Alert("Esta ação é irreversível (não afeta exames já realizados).", color="warning", className="mb-0")]) 
-    return True, ext_id_to_delete, info
+                     dbc.Alert("Esta ação é irreversível (não afeta exames já realizados).", color="warning", className="mb-0")])
+    return True, ext_id_to_edit, info
 
 @dash_app.callback(
     Output("examtypes_table","children", allow_duplicate=True),
@@ -1969,6 +2507,180 @@ def confirm_ext_del(n, tid):
     if ok: log_action(cu.get("email") if cu else None, "delete", "exam_type", int(tid), before=before, after=None)
     
     return examtypes_table_component(), False
+
+## MODIFICAÇÃO: Callbacks para a aba de Materiais (Gerencial)
+@dash_app.callback(
+    Output("nm_feedback","children"),
+    Output("materials_table","children", allow_duplicate=True),
+    Output("materials_data_cache","data", allow_duplicate=True), # MODIFICAÇÃO: Atualiza cache de materiais no dashboard
+    Input("btn_nm_criar","n_clicks"),
+    State("nm_nome","value"), State("nm_tipo","value"), State("nm_unidade","value"), State("nm_valor","value"),
+    prevent_initial_call=True
+)
+def criar_material(n, nome, tipo, unidade, valor):
+    """Cria um novo material/contraste, com validação e log."""
+    cu = current_user()
+    if not cu or cu.get("perfil")!="admin": return dbc.Alert("Acesso negado.", color="danger"), no_update, no_update
+    
+    feedback_msgs = []
+    is_valid_nome, clean_nome = validate_text_input(nome, "Nome")
+    if not is_valid_nome: feedback_msgs.append(clean_nome)
+
+    is_valid_tipo, clean_tipo = validate_text_input(tipo, "Tipo")
+    if not is_valid_tipo: feedback_msgs.append(clean_tipo)
+    elif clean_tipo not in MATERIAL_TYPES: feedback_msgs.append("Tipo inválido.")
+
+    is_valid_unidade, clean_unidade = validate_text_input(unidade, "Unidade")
+    if not is_valid_unidade: feedback_msgs.append(clean_unidade)
+
+    is_valid_valor, clean_valor = validate_positive_float(valor, "Valor")
+    if not is_valid_valor: feedback_msgs.append(clean_valor)
+    
+    if feedback_msgs:
+        return dbc.Alert(html.Ul([html.Li(msg) for msg in feedback_msgs]), color="danger"), no_update, no_update
+
+    rec = {"nome": clean_nome, "tipo": clean_tipo, "unidade": clean_unidade, "valor_unitario": clean_valor, "id":0}
+    mid = add_material(rec)
+    log_action(cu.get("email"), "create", "material", mid, before=None, after=rec)
+    updated_materials = list_materials() # MODIFICAÇÃO: Obtém a lista atualizada de materiais
+    return dbc.Alert(f"Material/Contraste adicionado (ID {mid}).", color="success", duration=3000), materials_table_component(), updated_materials
+
+@dash_app.callback(Output("materials_table","children"), Input("tabs_gerencial","active_tab"))
+def render_materials_table(tab):
+    """Renderiza a tabela de materiais quando a aba 'Materiais e Contrastes' está ativa."""
+    if tab!="g_materials": return no_update
+    return materials_table_component()
+
+@dash_app.callback(
+    Output("material_edit_modal","is_open"),
+    Output("edit_material_id","data"),
+    Output("em_nome","value"),
+    Output("em_tipo","value"),
+    Output("em_unidade","value"),
+    Output("em_valor","value"),
+    Input({"type":"mat_edit_btn","id":ALL},"n_clicks"),
+    Input("material_edit_cancel","n_clicks"),
+    prevent_initial_call=True
+)
+def open_material_edit(edit_clicks, cancel_click):
+    """Abre o modal de edição de material e carrega os dados."""
+    from dash import callback_context as ctx
+    if not ctx.triggered: raise dash.exceptions.PreventUpdate
+    
+    triggered_input = ctx.triggered[0]
+    triggered_prop_id = triggered_input["prop_id"]
+    triggered_value = triggered_input["value"]
+
+    if triggered_prop_id == "material_edit_cancel.n_clicks": return False, None, None, None, None, None
+    
+    if triggered_value is None or triggered_value == 0:
+        raise dash.exceptions.PreventUpdate
+
+    material_id_to_edit = get_triggered_component_id_from_context(triggered_prop_id)
+    if not material_id_to_edit:
+        raise dash.exceptions.PreventUpdate
+    
+    m = next((x for x in list_materials() if x.get("id")==material_id_to_edit), None)
+    if not m: raise dash.exceptions.PreventUpdate
+    
+    return True, material_id_to_edit, m.get("nome"), m.get("tipo"), m.get("unidade"), m.get("valor_unitario")
+
+@dash_app.callback(
+    Output("material_edit_modal","is_open", allow_duplicate=True),
+    Output("materials_table","children", allow_duplicate=True),
+    Output("materials_data_cache","data", allow_duplicate=True), # Atualiza cache
+    Input("material_edit_save","n_clicks"),
+    State("edit_material_id","data"),
+    State("em_nome","value"), State("em_tipo","value"), State("em_unidade","value"), State("em_valor","value"),
+    prevent_initial_call=True
+)
+def save_material_edit(n, mid, nome, tipo, unidade, valor):
+    """Salva as alterações de um material editado, com validação e log."""
+    cu = current_user()
+    if not cu or cu.get("perfil")!="admin": raise dash.exceptions.PreventUpdate
+    if not mid: raise dash.exceptions.PreventUpdate
+
+    feedback_msgs = []
+    is_valid_nome, clean_nome = validate_text_input(nome, "Nome")
+    if not is_valid_nome: feedback_msgs.append(clean_nome)
+
+    is_valid_tipo, clean_tipo = validate_text_input(tipo, "Tipo")
+    if not is_valid_tipo: feedback_msgs.append(clean_tipo)
+    elif clean_tipo not in MATERIAL_TYPES: feedback_msgs.append("Tipo inválido.")
+
+    is_valid_unidade, clean_unidade = validate_text_input(unidade, "Unidade")
+    if not is_valid_unidade: feedback_msgs.append(clean_unidade)
+
+    is_valid_valor, clean_valor = validate_positive_float(valor, "Valor")
+    if not is_valid_valor: feedback_msgs.append(clean_valor)
+    
+    if feedback_msgs:
+        return True, dbc.Alert(html.Ul([html.Li(msg) for msg in feedback_msgs]), color="danger"), no_update # Retorna feedback no modal
+    
+    before = next((x for x in list_materials() if x.get("id")==int(mid)), None)
+    ok = update_material(int(mid), {"nome": clean_nome, "tipo": clean_tipo, "unidade": clean_unidade, "valor_unitario": clean_valor})
+    
+    if ok:
+        after = next((x for x in list_materials() if x.get("id")==int(mid)), None)
+        log_action(cu.get("email"), "update", "material", int(mid), before=before, after=after)
+        updated_materials = list_materials()
+        return False, materials_table_component(), updated_materials # Fecha modal, atualiza tabela e cache
+    else:
+        return True, dbc.Alert("Nenhuma alteração aplicada ou erro ao atualizar.", color="secondary", duration=3000), no_update # Permanece no modal, não atualiza cache
+
+@dash_app.callback(
+    Output("material_confirm_delete_modal","is_open"),
+    Output("delete_material_id","data"),
+    Output("material_delete_info","children"),
+    Input({"type":"mat_del_btn","id":ALL},"n_clicks"),
+    Input("material_delete_cancel","n_clicks"),
+    prevent_initial_call=True
+)
+def open_material_del(del_clicks, cancel_click):
+    """Abre o modal de confirmação de exclusão para materiais."""
+    from dash import callback_context as ctx
+    if not ctx.triggered: raise dash.exceptions.PreventUpdate
+    
+    triggered_input = ctx.triggered[0]
+    triggered_prop_id = triggered_input["prop_id"]
+    triggered_value = triggered_input["value"]
+
+    if triggered_prop_id == "material_delete_cancel.n_clicks": return False, None, no_update
+    
+    if triggered_value is None or triggered_value == 0:
+        raise dash.exceptions.PreventUpdate
+
+    material_id_to_delete = get_triggered_component_id_from_context(triggered_prop_id)
+    if not material_id_to_delete:
+        raise dash.exceptions.PreventUpdate
+    
+    m = next((x for x in list_materials() if x.get("id")==material_id_to_delete), None)
+    if not m: raise dash.exceptions.PreventUpdate
+    
+    info = html.Div([html.P([html.B(f"Material #{m.get('id')}"), f" — {m.get('nome')} ({m.get('tipo')})"]),
+                     dbc.Alert("Esta ação é irreversível.", color="warning", className="mb-0")]) 
+    return True, material_id_to_delete, info
+
+@dash_app.callback(
+    Output("materials_table","children", allow_duplicate=True),
+    Output("materials_data_cache","data", allow_duplicate=True), # Atualiza cache
+    Output("material_confirm_delete_modal","is_open", allow_duplicate=True),
+    Input("material_delete_confirm","n_clicks"),
+    State("delete_material_id","data"),
+    prevent_initial_call=True
+)
+def confirm_material_del(n, mid):
+    """Confirma e executa a exclusão de um material."""
+    cu = current_user()
+    if not n or not mid: raise dash.exceptions.PreventUpdate
+    
+    before = next((x for x in list_materials() if x.get("id")==int(mid)), None)
+    ok = delete_material(int(mid))
+    
+    if ok: log_action(cu.get("email") if cu else None, "delete", "material", int(mid), before=before, after=None)
+    
+    updated_materials = list_materials()
+    return materials_table_component(), updated_materials, False
 
 # Export link
 @dash_app.callback(Output("exp_link","href"), Input("exp_start","value"), Input("exp_end","value"))
@@ -2204,4 +2916,3 @@ if __name__=="__main__":
         port=int(os.getenv("PORT", "8050")),
         debug=os.getenv("DEBUG", "False").lower()=="true"
     )
-
