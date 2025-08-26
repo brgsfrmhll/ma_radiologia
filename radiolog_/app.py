@@ -365,7 +365,7 @@ def parse_periodo_str(periodo_str):
 # -------------------- Helpers de Validação --------------------
 def validate_email_format(email):
     """Valida o formato de um email."""
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
+    return re.match(r"[^@]+@[^@]+\\.[^@]+", email)
 
 def validate_positive_int(value, field_name, min_val=0, max_val=None):
     """Valida se um valor é um inteiro positivo dentro de um range opcional."""
@@ -380,11 +380,17 @@ def validate_positive_int(value, field_name, min_val=0, max_val=None):
 ## MODIFICAÇÃO: Nova função de validação para números decimais (para valor de material/contraste)
 def validate_positive_float(value, field_name, min_val=0.0):
     """Valida se um valor é um número decimal positivo."""
+    # Converte para string para garantir que a função float() possa processar 'None' ou outros tipos
+    s_value = str(value) if value is not None else '' 
     try:
-        val = float(value)
+        if not s_value.strip(): # Trata string vazia como 0.0 para validação
+            val = 0.0
+        else:
+            val = float(s_value)
+        
         if val < min_val: return False, f"{field_name} deve ser no mínimo {min_val}."
         return True, val
-    except (ValueError, TypeError):
+    except ValueError: # Captura erro de conversão para float
         return False, f"{field_name} deve ser um número decimal válido."
 
 def validate_text_input(value, field_name, allow_empty=False, strip=True):
@@ -1426,7 +1432,7 @@ def load_data(tab, modalidades, medico_like, periodo, n_clicks_salvar): # MODIFI
         if start: df = df[df["data_hora"] >= start]
         if end: df = df[df["data_hora"] <= end] # Ajustado para <= end, pois parse_periodo_str já ajusta para o final do dia
     
-    # Remove linhas com data_hora inválida (NaT) após a conversão, se necessário
+    # Remove linhas com data_hora inválida (NaT) após a coerção, se necessário
     df = df.dropna(subset=['data_hora'])
 
     return df.to_json(orient="records", date_format="iso")
@@ -1727,11 +1733,11 @@ def open_delete_modal(del_clicks, cancel_click, is_open):
     if triggered_value is None or triggered_value == 0:
         raise dash.exceptions.PreventUpdate
 
-    exam_id_to_delete = get_triggered_component_id_from_context(triggered_prop_id)
-    if not exam_id_to_delete:
+    exam_id_to_edit = get_triggered_component_id_from_context(triggered_prop_id)
+    if not exam_id_to_edit:
         raise dash.exceptions.PreventUpdate
 
-    e = next((x for x in list_exams() if x.get("id")==exam_id_to_delete), None)
+    e = next((x for x in list_exams() if x.get("id")==exam_id_to_edit), None)
     if not e: raise dash.exceptions.PreventUpdate # Exame não encontrado
 
     info = html.Div([
@@ -1743,7 +1749,7 @@ def open_delete_modal(del_clicks, cancel_click, is_open):
             html.Li(f"Data/Hora: {format_dt_br(e.get('data_hora'))}")
         ], className="mb-0")
     ])
-    return True, exam_id_to_delete, info
+    return True, exam_id_to_edit, info
 
 @dash_app.callback(
     Output("exams_feedback","children", allow_duplicate=True),
@@ -1811,7 +1817,7 @@ def manage_materials_modal(
 
     # Determine se estamos no contexto de edição (para saber qual store usar)
     # A verificação com ctx.states.get('btn_edit_materials_modal.n_clicks') garante que o modal foi aberto pelo botão de edição
-    if (triggered_id == "btn_edit_materials_modal" or \
+    if (triggered_id == "btn_edit_materials_modal" or 
         (isinstance(triggered_id, dict) and triggered_id.get('type') in ['toggle_mat_btn', 'qty_input'] and (ctx.states.get('btn_edit_materials_modal.n_clicks') or 0) > 0)): 
         materials_to_use = list(current_materials_edit) # Faça uma cópia mutável
         is_edit_context = True
@@ -1855,21 +1861,20 @@ def manage_materials_modal(
     if isinstance(triggered_id, dict) and triggered_id.get('type') == 'qty_input':
         material_id = triggered_id['id']
         # MODIFICAÇÃO CRÍTICA: Acessar o valor específico do input que disparou o callback
-        new_quantity_str = ctx.triggered[0]['value'] # CORRIGIDO: Use 'value' para o valor atual do Input
+        new_quantity_value = ctx.triggered[0]['value'] # CORRIGIDO: Use 'value' para o valor atual do Input
 
         # Encontra o material na lista e atualiza a quantidade
         found = False
         for item in materials_to_use:
             if item['material_id'] == material_id:
-                # O valor do input pode vir como string ou None se o campo for apagado
-                qty_to_validate = new_quantity_str if new_quantity_str is not None and new_quantity_str != '' else 0.0
+                # Pass new_quantity_value diretamente, validate_positive_float vai lidar com a conversão
+                qty_valid, validation_msg_or_value = validate_positive_float(new_quantity_value, f"Quantidade para {materials_lookup.get(material_id, {}).get('nome', 'Material Desconhecido')}") 
                 
-                qty_valid, qty_val_msg = validate_positive_float(qty_to_validate, f"Quantidade para {materials_lookup.get(material_id, {}).get('nome', 'Material Desconhecido')}") # Use o nome do material no feedback
                 if qty_valid:
-                    item['quantidade'] = clean_qty
+                    item['quantidade'] = validation_msg_or_value # Atribui o valor float validado
                     feedback = "" # Limpa feedback se a validação for OK
                 else:
-                    feedback = dbc.Alert(f"Quantidade inválida para {materials_lookup.get(material_id, {}).get('nome', 'Material Desconhecido')}: {new_quantity_str}. {qty_val_msg}", color="danger", duration=3000) # Usar qty_val_msg
+                    feedback = dbc.Alert(f"Quantidade inválida para {materials_lookup.get(material_id, {}).get('nome', 'Material Desconhecido')}: {new_quantity_value}. {validation_msg_or_value}", color="danger", duration=3000) 
                 found = True
                 break
         if not found: # Caso o input de quantidade seja alterado para um item que não está na lista de materiais selecionados (edge case)
@@ -2171,16 +2176,16 @@ def open_user_del(del_clicks, cancel_click):
     if triggered_value is None or triggered_value == 0:
         raise dash.exceptions.PreventUpdate
 
-    user_id_to_delete = get_triggered_component_id_from_context(triggered_prop_id)
+    user_id_to_edit = get_triggered_component_id_from_context(triggered_prop_id)
     if not user_id_to_edit:
         raise dash.exceptions.PreventUpdate
     
-    u = next((x for x in get_users() if x.get("id")==user_id_to_delete), None)
+    u = next((x for x in get_users() if x.get("id")==user_id_to_edit), None)
     if not u: raise dash.exceptions.PreventUpdate
     
     info = html.Div([html.P([html.B(f"Usuário #{u.get('id')}"), f" — {u.get('nome')} ({u.get('email')})"]),
                      dbc.Alert("Atenção: você não poderá desfazer.", color="warning", className="mb-0")]) 
-    return True, user_id_to_delete, info
+    return True, user_id_to_edit, info
 
 @dash_app.callback(
     Output("users_table","children", allow_duplicate=True),
@@ -2475,6 +2480,7 @@ def open_ext_del(del_clicks, cancel_click):
 
     if triggered_prop_id == "ext_delete_cancel.n_clicks": return False, None, no_update
     
+    # Adicionada verificação explícita do valor de n_clicks
     if triggered_value is None or triggered_value == 0:
         raise dash.exceptions.PreventUpdate
 
