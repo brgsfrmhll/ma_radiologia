@@ -147,7 +147,7 @@ def init_files():
             {"id":5, "modalidade":"CT", "nome":"Tórax", "codigo":"CT003"},
             {"id":6, "modalidade":"CT", "nome":"Coluna Lombar", "codigo":"CT004"},
             {"id":7, "modalidade":"US", "nome":"Abdômen total", "codigo":"US001"},
-            {"id":8, "nome":"Pélvico", "codigo":"US002"},
+            {"id":8, "modalidade":"US", "nome":"Pélvico", "codigo":"US002"},
             {"id":9,  "modalidade":"MR", "nome":"Crânio", "codigo":"MR001"},
             {"id":10, "modalidade":"MR", "nome":"Joelho", "codigo":"MR002"},
             {"id":11, "modalidade":"MR", "nome":"Coluna Lombo-sacra", "codigo":"MR003"},
@@ -365,7 +365,9 @@ def parse_periodo_str(periodo_str):
 # -------------------- Helpers de Validação --------------------
 def validate_email_format(email):
     """Valida o formato de um email."""
-    return re.match(r"[^@]+@[^@]+\\.[^@]+", email)
+    # MODIFICAÇÃO: Regex mais flexível para permitir domínios como 'local' sem TLD
+    # Permite 'user@domain' ou 'user@domain.com'
+    return re.fullmatch(r"[^@]+@[^@]+(?:\.[^@]+)*", email)
 
 def validate_positive_int(value, field_name, min_val=0, max_val=None):
     """Valida se um valor é um inteiro positivo dentro de um range opcional."""
@@ -511,7 +513,7 @@ def login():
         senha=request.form.get("senha","")
         
         # Validação básica de email no login
-        if not validate_email_format(email):
+        if not validate_email_format(email): # <-- Esta linha é o foco
             error_message = "Formato de e-mail inválido."
         else:
             u=find_user_by_email(email)
@@ -1367,9 +1369,9 @@ def salvar_exame(n, exam_id, idade, modalidade, exame_txt, medico, data_dt, mate
     # MODIFICAÇÃO: Validação de quantidades de materiais
     materials_lookup = {m['id']: m for m in all_materials_data}
     for item in materiais_usados:
-        qty_valid, qty_val = validate_positive_float(item.get('quantidade'), f"Quantidade para {materials_lookup.get(item['material_id'], {}).get('nome', 'Material Desconhecido')}")
+        qty_valid, qty_val_msg = validate_positive_float(item.get('quantidade'), f"Quantidade para {materials_lookup.get(item['material_id'], {}).get('nome', 'Material Desconhecido')}")
         if not qty_valid:
-            feedback_msgs.append(qty_val)
+            feedback_msgs.append(f"Quantidade inválida para {materials_lookup.get(item['material_id'], {}).get('nome', 'Material Desconhecido')}: {item.get('quantidade', '')}. {qty_val_msg}")
 
 
     if feedback_msgs:
@@ -1671,9 +1673,9 @@ def save_edit(n, exam_id, exam_id_text, modalidade, exame_txt, edit_data_dt, med
     # MODIFICAÇÃO: Validação de quantidades de materiais
     materials_lookup = {m['id']: m for m in all_materials_data}
     for item in materiais_usados:
-        qty_valid, qty_val = validate_positive_float(item.get('quantidade'), f"Quantidade para {materials_lookup.get(item['material_id'], {}).get('nome', 'Material Desconhecido')}")
+        qty_valid, qty_val_msg = validate_positive_float(item.get('quantidade'), f"Quantidade para {materials_lookup.get(item['material_id'], {}).get('nome', 'Material Desconhecido')}")
         if not qty_valid:
-            feedback_msgs.append(qty_val)
+            feedback_msgs.append(f"Quantidade inválida para {materials_lookup.get(item['material_id'], {}).get('nome', 'Material Desconhecido')}: {item.get('quantidade', '')}. {qty_val_msg}")
 
     if feedback_msgs:
         return True, dbc.Alert(html.Ul([html.Li(msg) for msg in feedback_msgs]), color="danger"), no_update
@@ -2146,8 +2148,8 @@ def save_user_edit(n, uid, nome, email, perfil, modalidades, nova_senha):
     if ok:
         after = next((x for x in get_users() if x.get("id")==int(uid)), None)
         # Remove senha_hash do log para segurança
-        b_clean = {k: v for k,v in (before or {}).items() if k!="senha_hash"}
-        a_clean = {k: v for k,v in (after or {}).items() if k!="senha_hash"}
+        b_clean = {k:v for k,v in (before or {}).items() if k!="senha_hash"}
+        a_clean = {k:v for k,v in (after or {}).items() if k!="senha_hash"}
         log_action(cu.get("email"), "update", "user", int(uid), before=b_clean, after=a_clean)
         return False, dbc.Alert("Usuário atualizado com sucesso!", color="success", duration=3000), users_table_component()
     else:
@@ -2176,16 +2178,16 @@ def open_user_del(del_clicks, cancel_click):
     if triggered_value is None or triggered_value == 0:
         raise dash.exceptions.PreventUpdate
 
-    user_id_to_edit = get_triggered_component_id_from_context(triggered_prop_id)
+    user_id_to_delete = get_triggered_component_id_from_context(triggered_prop_id)
     if not user_id_to_edit:
         raise dash.exceptions.PreventUpdate
     
-    u = next((x for x in get_users() if x.get("id")==user_id_to_edit), None)
+    u = next((x for x in get_users() if x.get("id")==user_id_to_delete), None)
     if not u: raise dash.exceptions.PreventUpdate
     
     info = html.Div([html.P([html.B(f"Usuário #{u.get('id')}"), f" — {u.get('nome')} ({u.get('email')})"]),
                      dbc.Alert("Atenção: você não poderá desfazer.", color="warning", className="mb-0")]) 
-    return True, user_id_to_edit, info
+    return True, user_id_to_delete, info
 
 @dash_app.callback(
     Output("users_table","children", allow_duplicate=True),
@@ -2480,7 +2482,6 @@ def open_ext_del(del_clicks, cancel_click):
 
     if triggered_prop_id == "ext_delete_cancel.n_clicks": return False, None, no_update
     
-    # Adicionada verificação explícita do valor de n_clicks
     if triggered_value is None or triggered_value == 0:
         raise dash.exceptions.PreventUpdate
 
