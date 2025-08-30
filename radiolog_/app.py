@@ -1,3 +1,6 @@
+# SH
+#/home/ubuntu/ma_radiologia/radiolog_/deploy.sh
+
 # VENV
 # /home/ubuntu/.venv
 # cd /home/ubuntu/
@@ -7,17 +10,6 @@
 # sudo systemctl daemon-reload
 # sudo systemctl restart portal-radiologico
 # sudo systemctl status portal-radiologico --no-pager -l
-
-# app.py
-# Portal Radiológico - Local (JSON)
-# - Customização (admin): nome do portal, tema (Bootswatch) com preview, logo (aparece no login)
-# - Cabeçalho: título do portal centralizado + menu do usuário (trocar senha & logout)
-# - Abas centralizadas (Cadastro, Dashboard, Exames, Gerencial, Exportar)
-# - DateTimePicker (Dash Mantine) com locale pt-BR
-# - Cadastro de EXAMES (atendimentos) com Autocomplete de Catálogo por modalidade
-# - Menu GERENCIAL: Usuários, Médicos, Catálogo de Exames, Logs, Customização
-# - Lista/Editar/Excluir com CONFIRMAÇÃO e LOG de auditoria
-# - Semeado: catálogo de exames + alguns exames iniciais (editáveis)
 
 import os, json, threading, ast, base64
 from datetime import datetime, timedelta
@@ -2923,4 +2915,5 @@ if __name__=="__main__":
         port=int(os.getenv("PORT", "8050")),
         debug=os.getenv("DEBUG", "False").lower()=="true"
     )
+
 
