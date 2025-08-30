@@ -494,7 +494,7 @@ button{margin-top:16px;width:100%;padding:12px;border-radius:12px;border:0;backg
 <h1>Login</h1>{% if error %}<div class="error">{{ error }}</div>{% endif %}
 <form method="post"><label>E-mail</label><input name="email" type="email" required autofocus>
 <label>Senha</label><input name="senha" type="password" required><button type="submit">Entrar</button></form>
-<div class="hint">Usuário inicial: <b>admin@local</b> / <b>admin123</b></div></div></div></body></html>
+<div class="hint">Desenvolvido por: <b>Fia Softworks</b> / <b>2025 - v.1.01</b></div></div></div></body></html>
 """
 
 @server.route("/login", methods=["GET","POST"])
@@ -2923,3 +2923,4 @@ if __name__=="__main__":
         port=int(os.getenv("PORT", "8050")),
         debug=os.getenv("DEBUG", "False").lower()=="true"
     )
+
